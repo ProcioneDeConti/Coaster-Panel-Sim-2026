@@ -3,6 +3,12 @@ package com.abemu.coaster.ui
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.padding
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -36,8 +42,15 @@ private val trainColors = listOf(Color(0xFF1565C0), Color(0xFF8E24AA), Color(0xF
 fun OverviewPage(vm: SimViewModel) {
     vm.frame.longValue
     val plc = vm.plc
+    var plan by rememberSaveable { mutableStateOf(true) }
     Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        TrackDiagram(plc, Modifier.fillMaxWidth().weight(1f))
+        Box(Modifier.fillMaxWidth().weight(1f)) {
+            if (plan) PlanDiagram(plc, Modifier.fillMaxSize()) else TrackDiagram(plc, Modifier.fillMaxSize())
+            Row(Modifier.align(Alignment.TopEnd).padding(4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                HmiButton("PLAN", active = plan, activeColor = Hmi.Info) { plan = true }
+                HmiButton("PROFILE", active = !plan, activeColor = Hmi.Info) { plan = false }
+            }
+        }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             HmiFrame("BLOCK STATUS", Modifier.weight(1.6f)) {
                 Row {
@@ -213,3 +226,121 @@ fun TrackDiagram(plc: RidePlc, modifier: Modifier = Modifier) {
     }
 }
 
+
+/** Top-down (plan view) track diagram, the usual layout on ride HMIs. */
+@Composable
+fun PlanDiagram(plc: RidePlc, modifier: Modifier = Modifier) {
+    val tm = rememberTextMeasurer()
+    val profile = plc.profile
+    val plant = plc.plant
+    val blink = flasher()
+    Canvas(modifier.background(Color(0xFF0F1A24))) {
+        val boxW = 100f
+        val boxH = 56f
+        val pad = 28f
+        val scale = minOf((size.width - pad * 2) / boxW, (size.height - pad * 2 - 14f) / boxH)
+        val ox = (size.width - boxW * scale) / 2
+        val oy = pad + 14f + (size.height - pad * 2 - 14f - boxH * scale) / 2
+        fun pt(s: Double): Offset {
+            val (x, y) = profile.planPoint(s)
+            return Offset(ox + x.toFloat() * scale, oy + y.toFloat() * scale)
+        }
+        /** Track path between two positions (forward, handling wrap). */
+        fun seg(from: Double, to: Double): Path {
+            val len = profile.ahead(from, to).let { if (it == 0.0) profile.length else it }
+            val path = Path()
+            path.moveTo(pt(from).x, pt(from).y)
+            var d = 0.0
+            while (d < len) { d = minOf(len, d + 2.0); val p = pt(from + d); path.lineTo(p.x, p.y) }
+            return path
+        }
+
+        // Station platform and transfer spur
+        val st = profile.blocks[0]
+        val a = pt(st.stopPos!! - profile.trainLength - 6)
+        val b = pt(st.stopPos + 4)
+        drawRect(Color(0xFF37474F), Offset(minOf(a.x, b.x), a.y + 6f), Size(kotlin.math.abs(b.x - a.x), 14f))
+        drawText(tm, "STATION", Offset(minOf(a.x, b.x), a.y + 22f), TextStyle(color = Color(0xFF90A4AE), fontSize = 9.sp))
+        val fb = profile.blocks[3]
+        val f1 = pt(fb.brakeStart!!)
+        val f2 = pt(fb.stopPos!!)
+        drawLine(Color(0xFF455A64), f1 + Offset(0f, -16f), f2 + Offset(0f, -16f), 5f)
+        repeat(plant.stored) { k ->
+            val x = f1.x + (f2.x - f1.x) * (0.25f + 0.4f * k)
+            drawLine(Color(0xFF00897B), Offset(x - 14f, f1.y - 16f), Offset(x + 14f, f1.y - 16f), 9f, StrokeCap.Round)
+        }
+        drawText(tm, "TRANSFER / STORAGE", Offset(minOf(f1.x, f2.x), f1.y - 34f), TextStyle(color = Color(0xFF607D8B), fontSize = 9.sp))
+
+        // Track, coloured by block occupancy
+        profile.blocks.forEach { blk ->
+            val occ = plc.occ[blk.index] != -1
+            val c = when {
+                !plc.powered -> Color(0xFF5B6B78)
+                occ -> Color(0xFFE53935)
+                else -> Color(0xFF43A047)
+            }
+            drawPath(seg(blk.start, blk.end), c, style = Stroke(7f, cap = StrokeCap.Butt))
+            val mid = blk.start + profile.ahead(blk.start, blk.end) / 2
+            drawText(tm, blk.tag, pt(mid) + Offset(6f, 6f),
+                TextStyle(color = Color(0xFFCFD8DC), fontSize = 11.sp, fontWeight = FontWeight.Bold))
+        }
+        // Rails/centreline
+        drawPath(seg(0.0, 0.0), Color(0xFF0F1A24), style = Stroke(1.5f))
+
+        // Lift chain / LSM
+        if (profile.type == ProfileType.LIFT) {
+            val run = plant.chainSpeed > 0.1
+            drawPath(seg(profile.liftStart, profile.liftEnd), if (run) Color(0xFFFFB300) else Color(0xFF6D5A2A),
+                style = Stroke(4f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(8f, 6f),
+                    if (run) -(System.currentTimeMillis() / 30 % 14).toFloat() else 0f)))
+        } else {
+            val on = plc.launchState == LaunchState.FIRING || (plc.launchState == LaunchState.CHARGING && blink)
+            drawPath(seg(profile.launchStart, profile.launchEnd), if (on) Color(0xFF40C4FF) else Color(0xFF1E4D6B), style = Stroke(4f))
+        }
+
+        // Brakes: bar beside the track
+        profile.blocks.forEach { blk ->
+            val bs = blk.brakeStart ?: return@forEach
+            val stop = blk.stopPos ?: return@forEach
+            val brk = plant.brakes[blk.index]
+            val from = if (blk.kind == BlockKind.STATION) stop - 22 else bs
+            val c = when {
+                brk.openProx -> Color(0xFF00E676)
+                brk.closedProx -> Color(0xFFFF1744)
+                else -> Color(0xFFFFEA00)
+            }
+            drawPath(seg(from, stop), c, style = Stroke(14f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(3f, 4f))))
+        }
+
+        // Entry proximity sensors
+        profile.blocks.forEach { blk ->
+            val on = plant.entrySensor(blk.index)
+            drawCircle(Color.Black, 6.5f, pt(blk.start))
+            drawCircle(if (on) Color(0xFFFFEB3B) else Color(0xFF546E7A), 5f, pt(blk.start))
+        }
+
+        // Trains
+        plant.trains.forEach { t ->
+            val c = trainColors[(t.id - 1) % trainColors.size]
+            drawPath(seg(t.s - profile.trainLength, t.s), c, style = Stroke(13f, cap = StrokeCap.Round))
+            drawCircle(Color.White, 4f, pt(t.s))
+            drawText(tm, "T${t.id} ${"%.1f".format(kotlin.math.abs(t.v))}", pt(t.s) + Offset(8f, -22f),
+                TextStyle(color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold, background = c))
+        }
+
+        // Remote E-Stop location
+        val inp = plc.inputs
+        val where = listOfNotNull(
+            "LOAD STAND".takeIf { inp.loadStandEstop },
+            "UNLOAD STAND".takeIf { inp.unloadStandEstop },
+            "CONSOLE".takeIf { inp.estopPressed },
+        )
+        if (where.isNotEmpty() && blink) {
+            drawText(tm, "⚠ E-STOP: " + where.joinToString(" + "), pt(st.stopPos) + Offset(-60f, -44f),
+                TextStyle(color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold, background = Color(0xFFD50000)))
+        }
+
+        drawText(tm, "PLAN VIEW   ━ occupied / clear   ┅ brake closed / open   ● entry prox",
+            Offset(8f, 6f), TextStyle(color = Color(0xFF78909C), fontSize = 10.sp))
+    }
+}
