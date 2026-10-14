@@ -21,7 +21,21 @@ class RideCycleTest {
     }
 
     private fun step(plc: RidePlc, secs: Double) {
-        repeat((secs / dt).toInt()) { plc.scan(dt); plc.plant.step(dt) }
+        repeat((secs / dt).toInt()) {
+            plc.scan(dt); plc.plant.step(dt)
+            // Safety invariant: never two train fronts in the same block.
+            val p = plc.profile
+            val perBlock = plc.plant.trains.groupBy { p.blockAt(it.s).index }
+            perBlock.forEach { (b, ts) ->
+                assertTrue("${p.name}: ${ts.size} trains in ${p.blocks[b].tag} ${p.blocks[b].name}", ts.size <= 1)
+            }
+        }
+    }
+
+    @Test fun millenniumForceBlocks() {
+        val p = RideProfile.create(CoasterLibrary.byId("millennium"))
+        assertEquals(listOf("Load Station", "Lift Hill", "Main Course / Final Brake", "Unload Station"), p.blocks.map { it.name })
+        runCycles(CoasterLibrary.byId("millennium"), 3, 6, NOOP)
     }
 
     private fun runCycles(type: ProfileType, trains: Int, dispatches: Int, configure: (RidePlc) -> Unit = {}): RidePlc =

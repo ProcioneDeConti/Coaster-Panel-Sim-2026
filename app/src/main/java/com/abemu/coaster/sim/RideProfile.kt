@@ -2,7 +2,7 @@ package com.abemu.coaster.sim
 
 enum class ProfileType(val label: String) { LIFT("Lift Hill"), LAUNCH("LSM Launch") }
 
-enum class BlockKind { STATION, LIFT, LAUNCH, BRAKE_RUN }
+enum class BlockKind { STATION, LIFT, LAUNCH, BRAKE_RUN, UNLOAD }
 
 /**
  * A block zone on the circuit. Positions are metres along the track, measured at the train's
@@ -10,6 +10,7 @@ enum class BlockKind { STATION, LIFT, LAUNCH, BRAKE_RUN }
  *
  * @param stopPos where the block's exit brake stops a train (null for the lift).
  * @param brakeStart where the brake / drive-tire section begins.
+ * @param exitLaunch mid-course LSM launch speed at the block exit, or 0.
  */
 data class Block(
     val index: Int,
@@ -20,6 +21,8 @@ data class Block(
     val end: Double,
     val stopPos: Double?,
     val brakeStart: Double?,
+    /** If > 0, an LSM past the stop point launches a released train to this speed (m/s). */
+    val exitLaunch: Double = 0.0,
 )
 
 /** A fully built ride: track geometry, block layout and train/drive parameters. */
@@ -75,6 +78,13 @@ class RideProfile(
     fun slope(s: Double): Double = (height(s + 0.5) - height(s - 0.5))
 
     fun blockAt(s: Double): Block = blocks.first { inRange(s, it.start, it.end) }
+
+    /** Block holding the transfer track: the last brake run before the station(s). */
+    val transferBlock: Int get() = blocks.last { it.kind == BlockKind.BRAKE_RUN }.index
+
+    /** Where trains sit at power-up: load station first, then working back from the station. */
+    val initialStops: List<Double>
+        get() = listOf(blocks[0].stopPos!!) + blocks.drop(2).reversed().mapNotNull { it.stopPos }
 
     val maxHeight: Double = elevation.maxOf { it.second }
 

@@ -72,6 +72,9 @@ class RidePlc(val plant: Plant) {
     private val brakeMismatchT = DoubleArray(n)
     private val stallT = DoubleArray(n)
     private val rowFaultT = DoubleArray(profile.rows)
+    private val dwellT = DoubleArray(n)
+    /** Seconds a train dwells in an unload station before it is released to load. */
+    val unloadDwellSec = 8.0
 
     var loadReady = false; private set
     var unloadReady = false; private set
@@ -323,13 +326,17 @@ class RidePlc(val plant: Plant) {
         for (b in 0 until n) {
             val blk = profile.blocks[b]
             if (releaseLatch[b] && (occ[next(b)] == latchedTrain[b] || occ[b] == -1)) releaseLatch[b] = false
-            if (blk.kind == BlockKind.BRAKE_RUN && running && occ[b] != -1 && nextClear(b) && !releaseLatch[b] &&
-                transferState == TransferState.IDLE
+            // Unload station: train must dwell at the stop (passengers exit) before release.
+            val atStop = occ[b] != -1 && plant.trainAtStop(b)?.let { it.id == occ[b] && abs(it.v) < 0.05 } == true
+            dwellT[b] = if (blk.kind == BlockKind.UNLOAD && atStop) dwellT[b] + dt else 0.0
+            val unloaded = blk.kind != BlockKind.UNLOAD || dwellT[b] >= unloadDwellSec
+            if ((blk.kind == BlockKind.BRAKE_RUN || blk.kind == BlockKind.UNLOAD) && running && occ[b] != -1 &&
+                nextClear(b) && unloaded && !releaseLatch[b] && transferState == TransferState.IDLE
             ) latch(b)
             if (manualOk && i.manualRelease[b] && occ[b] != -1 && nextClear(b)) {
                 manualOpen[b] = when (blk.kind) {
                     BlockKind.STATION -> restraintsOk && gatesOk
-                    BlockKind.BRAKE_RUN -> true
+                    BlockKind.BRAKE_RUN, BlockKind.UNLOAD -> true
                     else -> false
                 }
             }
@@ -344,7 +351,7 @@ class RidePlc(val plant: Plant) {
                 BlockKind.LIFT -> false
                 else -> releaseLatch[b] || manualOpen[b]
             } || (maint && maintBrakeOpen[b])
-            plant.brakes[b].cmdOpen = open && !eStopped && !(b == 3 && transferState != TransferState.IDLE)
+            plant.brakes[b].cmdOpen = open && !eStopped && !(b == profile.transferBlock && transferState != TransferState.IDLE)
             plant.tiresCmd[b] = !eStopped
         }
 
@@ -407,7 +414,7 @@ class RidePlc(val plant: Plant) {
                 if (v < min) alarms.raise("LSM_SPD", "Launch exit speed low: ${"%.1f".format(v)} m/s (min ${"%.1f".format(min)})", Severity.WARNING)
             }
             LaunchState.VERIFY -> when {
-                occ[2] == launchTrain -> launchState = LaunchState.IDLE
+                occ[next(1)] == launchTrain -> launchState = LaunchState.IDLE
                 launchT > profile.launchVerifySec -> {
                     launchState = LaunchState.ROLLBACK
                     alarms.raise("ROLLBACK", "Launch rollback – train $launchTrain failed to crest top hat", Severity.CSTOP)
@@ -422,24 +429,26 @@ class RidePlc(val plant: Plant) {
     // ---------- Transfer track (maintenance) ----------
 
     fun requestTransfer(store: Boolean): String {
+        val tb = profile.transferBlock
         if (inputs.mode != KeyMode.MAINT) return "Transfer requires MAINT mode"
         if (state != RideState.STOPPED) return "Transfer requires ride STOPPED"
         if (transferState != TransferState.IDLE) return "Transfer already in progress"
         if (store) {
-            if (occ[3] == -1 || plant.trainAtStop(3) == null) return "No train stopped on transfer section"
+            if (occ[tb] == -1 || plant.trainAtStop(tb) == null) return "No train stopped on transfer section"
         } else {
             if (plant.stored == 0) return "No trains in storage"
-            if (occ[3] != -1 || plant.trains.any { profile.blockAt(it.s).index == 3 }) return "Transfer section not clear"
+            if (occ[tb] != -1 || plant.trains.any { profile.blockAt(it.s).index == tb }) return "Transfer section not clear"
         }
         transferStoring = store
         transferState = TransferState.UNLOCK
         transferT = 0.0
-        alarms.info("XFER", if (store) "Transfer: storing train ${occ[3]}" else "Transfer: retrieving train from storage")
+        alarms.info("XFER", if (store) "Transfer: storing train ${occ[tb]}" else "Transfer: retrieving train from storage")
         return "Transfer started"
     }
 
     private fun runTransfer(dt: Double) {
         if (transferState == TransferState.IDLE) return
+        val tb = profile.transferBlock
         if (eStopped) return // hold position
         transferT += dt
         fun nextStep(s: TransferState, after: Double) { if (transferT > after) { transferState = s; transferT = 0.0 } }
@@ -448,9 +457,9 @@ class RidePlc(val plant: Plant) {
             TransferState.SHIFT_OUT -> nextStep(TransferState.MOVE, 4.0)
             TransferState.MOVE -> if (transferT > 1.0) {
                 if (transferStoring) {
-                    if (plant.storeTrainFrom(3)) occ[3] = -1
-                } else if (plant.retrieveTrainTo(3)) {
-                    occ[3] = plant.trains.last().id
+                    if (plant.storeTrainFrom(tb)) occ[tb] = -1
+                } else if (plant.retrieveTrainTo(tb)) {
+                    occ[tb] = plant.trains.last().id
                 }
                 transferState = TransferState.SHIFT_BACK; transferT = 0.0
             }

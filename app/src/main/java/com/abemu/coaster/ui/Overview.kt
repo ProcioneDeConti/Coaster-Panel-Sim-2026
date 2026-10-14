@@ -261,7 +261,7 @@ fun PlanDiagram(plc: RidePlc, modifier: Modifier = Modifier) {
         val b = pt(st.stopPos + 4)
         drawRect(Color(0xFF37474F), Offset(minOf(a.x, b.x), a.y + 6f), Size(kotlin.math.abs(b.x - a.x), 14f))
         drawText(tm, "STATION", Offset(minOf(a.x, b.x), a.y + 22f), TextStyle(color = Color(0xFF90A4AE), fontSize = 9.sp))
-        val fb = profile.blocks[3]
+        val fb = profile.blocks[profile.transferBlock]
         val f1 = pt(fb.brakeStart!!)
         val f2 = pt(fb.stopPos!!)
         drawLine(Color(0xFF455A64), f1 + Offset(0f, -16f), f2 + Offset(0f, -16f), 5f)

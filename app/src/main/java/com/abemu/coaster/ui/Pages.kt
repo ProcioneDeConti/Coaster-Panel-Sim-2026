@@ -246,7 +246,7 @@ fun MaintPage(vm: SimViewModel) {
             }
         }
         Column(Modifier.weight(0.85f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            HmiFrame("TRANSFER TRACK / TRAIN STORAGE  (${plc.profile.blocks[3].tag})") {
+            HmiFrame("TRANSFER TRACK / TRAIN STORAGE  (${plc.profile.blocks[plc.profile.transferBlock].tag})") {
                 Canvas(Modifier.fillMaxWidth().height(110.dp)) {
                     val ts = plc.transferState
                     val shift = when (ts) {
@@ -264,7 +264,7 @@ fun MaintPage(vm: SimViewModel) {
                     for (i in 0 until plc.plant.stored) {
                         drawRect(Color(0xFF00897B), Offset(size.width * (0.4f + i * 0.2f), storeY - 9), Size(size.width * 0.16f, 18f))
                     }
-                    if (plc.occ[3] != -1) drawRect(Color(0xFF1565C0), Offset(size.width * 0.07f, tableY - 8), Size(size.width * 0.18f, 16f))
+                    if (plc.occ[plc.profile.transferBlock] != -1) drawRect(Color(0xFF1565C0), Offset(size.width * 0.07f, tableY - 8), Size(size.width * 0.18f, 16f))
                 }
                 ValueBox("Transfer state", plc.transferState.label)
                 ValueBox("Trains in storage", plc.plant.stored.toString())

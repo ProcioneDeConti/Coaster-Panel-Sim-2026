@@ -70,12 +70,8 @@ class Plant(val profile: RideProfile, activeTrains: Int, totalTrains: Int = 3) {
     val launchSpeed get() = if (faults.launchUnderspeed) profile.rollbackSpeed else profile.launchSpeed
 
     init {
-        val stops = buildList {
-            add(profile.blocks[0].stopPos!!)
-            add(profile.blocks[3].stopPos!!)
-            add(profile.blocks[2].stopPos!!)
-        }
-        for (i in 0 until activeTrains) trains += Train(i + 1, stops[i], profile.rows)
+        val stops = profile.initialStops
+        for (i in 0 until minOf(activeTrains, stops.size)) trains += Train(i + 1, stops[i], profile.rows)
     }
 
     // ---- Sensors ----
@@ -206,6 +202,9 @@ class Plant(val profile: RideProfile, activeTrains: Int, totalTrains: Int = 3) {
                 } else {
                     val trim = if (block.kind == BlockKind.BRAKE_RUN) 6.0 else 3.0
                     when {
+                        // Mid-course LSM launch past the stop point (e.g. a tunnel launch).
+                        block.exitLaunch > 0 && toStop <= 0.5 && !faults.lsmFault ->
+                            t.v = min(block.exitLaunch, t.v + 11.0 * dt)
                         t.v > trim -> t.v = max(trim, t.v - 4.0 * dt)
                         tires && t.v < 2.0 -> t.v = min(2.0, t.v + 1.0 * dt)
                         else -> freeRoll()
