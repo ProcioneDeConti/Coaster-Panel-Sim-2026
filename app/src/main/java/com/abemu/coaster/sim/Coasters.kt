@@ -48,6 +48,10 @@ object CoasterLibrary {
             hills1 = listOf(0.7, 0.6, 0.55, 0.45), mcbrFrac = 0.4, hills2 = listOf(0.6, 0.5, 0.4, 0.3),
             cars = 6, ridersPerCar = 6, layout = 1, seed = 4, park = "Cedar Point",
             note = "Out-and-back hyper coaster with camelback airtime hills. Approximation of the 1989 Arrow original."),
+        CoasterSpec("gemini", "Gemini", ProfileType.LIFT, 38.4, liftSpeed = 4.0,
+            hills1 = listOf(0.7, 0.5, 0.55), mcbrFrac = 0.45, hills2 = listOf(0.55, 0.4),
+            cars = 6, ridersPerCar = 4, layout = 2, seed = 12, park = "Cedar Point",
+            note = "Racing coaster with two side-by-side tracks; one track is modelled. Approximation of the 1978 Arrow original."),
         CoasterSpec("thunder", "Thunder Ridge", ProfileType.LIFT, 22.0,
             hills1 = listOf(0.6, 0.45), mcbrFrac = 0.45, hills2 = listOf(0.5),
             cars = 5, ridersPerCar = 4, layout = 0, seed = 2, note = "Family coaster."),
@@ -193,7 +197,8 @@ object CoasterLibrary {
             length = length,
             elevation = e,
             blocks = listOf(b1, b2, b3, b4),
-            plan = plan(spec, topS, finalFlat, finalEnd),
+            plan = RealLayouts.byId[spec.id]?.let { realPlan(it, topS, finalEnd, length) }
+                ?: plan(spec, topS, finalFlat, finalEnd),
             liftStart = if (spec.type == ProfileType.LIFT) 45.0 else 0.0,
             liftEnd = liftEnd,
             liftCrestSensor = liftCrest,
@@ -205,6 +210,29 @@ object CoasterLibrary {
     }
 
     // ---------------- Plan view ----------------
+
+    /**
+     * Map a real (OpenStreetMap) layout onto this track: the real station and lift line up with the
+     * simulated station and lift, and the rest of the circuit is stretched to fit.
+     */
+    private fun realPlan(real: RealLayouts.Layout, topS: Double, finalEnd: Double, length: Double): List<Triple<Double, Double, Double>> {
+        val liftLen = (topS - 45.0) / real.osmLengthM
+        val crest = if (real.liftTagged) real.liftEnd else minOf(real.liftEnd, real.liftStart + liftLen)
+        // (real fraction -> simulated s) anchors; s runs past [length] and is wrapped afterwards.
+        val anchors = listOf(0.0 to finalEnd, real.liftStart to length + 45.0, crest to length + topS, 1.0 to finalEnd + length)
+        fun map(u: Double): Double {
+            for (k in 1 until anchors.size) {
+                val (u0, s0) = anchors[k - 1]
+                val (u1, s1) = anchors[k]
+                if (u <= u1) return s0 + (s1 - s0) * ((u - u0) / (u1 - u0).coerceAtLeast(1e-9))
+            }
+            return anchors.last().second
+        }
+        return real.points
+            .map { (u, x, y) -> Triple(map(u) % length, x, y) }
+            .sortedBy { it.first }
+            .distinctBy { Math.round(it.first * 10) }
+    }
 
     /** Course shapes from the crest (84,52) to the final brake start (56,44), in a 100 x 56 box. */
     private val templates = listOf(
