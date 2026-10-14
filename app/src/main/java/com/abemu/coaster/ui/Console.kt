@@ -108,12 +108,19 @@ fun OperatorConsole(vm: SimViewModel, modifier: Modifier = Modifier) {
         val unlocked = plc.plant.restraintUnlockCmd
         PanelSection("STATION") {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                // Lamps flash while an action is in progress and go solid once it is confirmed.
+                val plant = plc.plant
+                val locking = powered && !unlocked && plc.trainInStation && !plc.allRowsLocked
+                val locked = powered && !unlocked && plc.allRowsLocked
+                val gatesOpening = plant.gatesOpenCmd && plant.gatePos < 0.97
+                val gatesClosing = powered && !plant.gatesOpenCmd && !plant.gateClosedSensor
                 PushButton("RESTRAINTS\nOPEN", Lens.Amber, unlocked, { inp.restraintOpen = it })
-                PushButton("RESTRAINTS\nLOCK", Lens.Green, powered && !unlocked && plc.allRowsLocked,
+                PushButton("RESTRAINTS\nLOCK", Lens.Green, locked || (locking && blink),
                     { inp.restraintClose = it })
-                PushButton("GATES\nOPEN", Lens.Amber, plc.plant.gatesOpenCmd, { inp.gatesOpen = it })
-                PushButton("GATES\nCLOSE", Lens.Green, powered && plc.plant.gateClosedSensor && !plc.plant.gatesOpenCmd,
-                    { inp.gatesClose = it })
+                PushButton("GATES\nOPEN", Lens.Amber, (plant.gatesOpenCmd && !gatesOpening) || (gatesOpening && blink),
+                    { inp.gatesOpen = it })
+                PushButton("GATES\nCLOSE", Lens.Green, (powered && plant.gateClosedSensor && !plant.gatesOpenCmd) ||
+                    (gatesClosing && blink), { inp.gatesClose = it })
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                 OperatorStand("LOAD STAND", inp.loadStandEstop, { inp.loadStandEstop = it }, plc.loadReady) { inp.loadReady = it }
