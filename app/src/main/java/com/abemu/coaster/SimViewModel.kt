@@ -34,6 +34,7 @@ class SimViewModel : ViewModel() {
     val soundEnabled = mutableStateMapOf<com.abemu.coaster.ui.SoundKind, Boolean>()
     var volume by mutableFloatStateOf(0.5f)
     val frame = mutableLongStateOf(0L)
+    val trends = com.abemu.coaster.sim.TrendRecorder()
 
     private val scanDt = 0.02
 
@@ -49,6 +50,7 @@ class SimViewModel : ViewModel() {
                 while (acc >= scanDt) {
                     plc.scan(scanDt)
                     plc.plant.step(scanDt)
+                    trends.update(plc, scanDt)
                     acc -= scanDt
                 }
                 frame.longValue++
@@ -72,6 +74,7 @@ class SimViewModel : ViewModel() {
         coasterId = id
         trainCount = trains
         plc = fresh
+        trends.clear()
         return true
     }
 }

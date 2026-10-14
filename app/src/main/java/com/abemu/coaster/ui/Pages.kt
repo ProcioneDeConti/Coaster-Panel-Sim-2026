@@ -192,7 +192,10 @@ fun MaintPage(vm: SimViewModel) {
     val inp = plc.inputs
     val m = inp.mode
     var msg by remember { mutableStateOf("") }
-    Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+    Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        // Live map so manual brake releases can be done while watching the trains.
+        PlanDiagram(plc, Modifier.fillMaxWidth().weight(0.9f))
+    Row(Modifier.fillMaxWidth().weight(1.1f), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         Column(Modifier.weight(1f).fillMaxHeight().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             HmiFrame("MANUAL BLOCK CONTROL  (key: MANUAL, ride STOPPED)") {
                 val manual = m == KeyMode.MANUAL && plc.state == RideState.STOPPED
@@ -281,6 +284,7 @@ fun MaintPage(vm: SimViewModel) {
                 HmiLabel(plc.statusText, 11.sp, color = Hmi.Info)
             }
         }
+    }
     }
 }
 

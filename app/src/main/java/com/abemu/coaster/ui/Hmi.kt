@@ -60,6 +60,7 @@ object Hmi {
 enum class HmiPage(val key: String, val title: String) {
     OVERVIEW("F1", "OVERVIEW"), STATION("F2", "STATION"), ALARMS("F3", "ALARMS"),
     MAINT("F4", "MANUAL / MAINT"), IO("F5", "I/O STATUS"), SIM("F6", "INSTRUCTOR"),
+    TRENDS("F7", "TRENDS"),
     EDITOR("DEV", "TRACK EDITOR"),
 }
 
@@ -116,6 +117,7 @@ fun HmiTerminal(vm: SimViewModel, modifier: Modifier = Modifier) {
                     HmiPage.IO -> IoPage(vm)
                     HmiPage.SIM -> SimPage(vm) { page = HmiPage.EDITOR }
                     HmiPage.EDITOR -> EditorPage(vm) { page = HmiPage.SIM }
+                    HmiPage.TRENDS -> TrendsPage(vm)
                 }
             }
         }
