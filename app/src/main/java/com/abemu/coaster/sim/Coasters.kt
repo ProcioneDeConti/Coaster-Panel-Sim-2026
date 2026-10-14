@@ -45,6 +45,11 @@ data class CoasterSpec(
     val spikeHeight: Double = 0.0,
     /** LAUNCH ride whose "launch" is an LSM-driven incline lift (Maverick): [launchSpeed] is the climb speed. */
     val lsmLift: Boolean = false,
+    /**
+     * Moving-block station: a train may follow the train ahead into a station zone (unload / load) as soon as that
+     * train is released and moving, instead of waiting for it to clear the block. Station moves happen together.
+     */
+    val movingBlockStation: Boolean = false,
 )
 
 object CoasterLibrary {
@@ -89,11 +94,11 @@ object CoasterLibrary {
         CoasterSpec("tt2", "Top Thrill 2", ProfileType.LAUNCH, 125.0, launchSpeed = 53.6,
             hills1 = emptyList(), mcbrFrac = 0.25, hills2 = emptyList(), hasMcbr = false, unloadStation = true,
             cars = 5, ridersPerCar = 4, layout = 1, seed = 30, park = "Cedar Point",
-            swing = 33.1 to 45.2, spikeHeight = 128.0,
+            swing = 33.1 to 45.2, spikeHeight = 128.0, movingBlockStation = true,
             note = "Triple swing launch: forward to 74 mph (falls back off the top hat), backward to 101 mph up the 128 m rear spike, then forward to 120 mph over the 125 m top hat. One station track with unload and load positions; the final brake is the station wait. The load train crosses the switch track onto the launch line, the switch locks to the spike line, then it fires. Blocks: load, launch / top hat, final brake (wait), unload."),
         CoasterSpec("maverick", "Maverick", ProfileType.LAUNCH, 32.0, launchSpeed = 9.0, lsmLift = true,
             hills1 = listOf(0.5, 0.6), mcbrFrac = 0.4, hills2 = listOf(0.55, 0.45, 0.35),
-            cars = 6, ridersPerCar = 2, layout = 2, seed = 21, park = "Cedar Point", tunnelLaunch = 31.3,
+            cars = 6, ridersPerCar = 2, layout = 2, seed = 21, park = "Cedar Point", tunnelLaunch = 31.3, movingBlockStation = true,
             note = "All-LSM: the 105 ft lift hill is an LSM incline straight out of the station (95° drop), then a tunnel block with the second LSM launch to 70 mph. 4 blocks: station, LSM lift, tunnel block, final brake run."),
         CoasterSpec("quantum", "Quantum", ProfileType.LAUNCH, 14.0, launchSpeed = 20.0,
             hills1 = listOf(0.5, 0.4), mcbrFrac = 0.45, hills2 = listOf(0.45),

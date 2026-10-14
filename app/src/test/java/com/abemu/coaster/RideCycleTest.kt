@@ -1,5 +1,6 @@
 ﻿package com.abemu.coaster
 
+import com.abemu.coaster.sim.BlockKind
 import com.abemu.coaster.sim.CoasterLibrary
 import com.abemu.coaster.sim.CoasterSpec
 import com.abemu.coaster.sim.KeyMode
@@ -27,10 +28,16 @@ class RideCycleTest {
     private fun step(plc: RidePlc, secs: Double) {
         repeat((secs / dt).toInt()) {
             plc.scan(dt); plc.plant.step(dt)
-            // Safety invariant: never two train fronts in the same block.
+            // Safety invariant: never two train fronts in the same block, except a moving-block station zone,
+            // where a train may follow the departing train in with at least the minimum spacing.
             val p = plc.profile
             val perBlock = plc.plant.trains.groupBy { p.blockAt(it.s).index }
             perBlock.forEach { (b, ts) ->
+                if (ts.size == 2 && plc.stationZone(b)) {
+                    val (x, y) = ts.sortedBy { p.ahead(p.blocks[b].start, it.s) }
+                    assertTrue("${p.name}: moving-block gap ${p.ahead(x.s, y.s)} in ${p.blocks[b].tag}", p.ahead(x.s, y.s) >= p.trainLength + 3.0)
+                    return@forEach
+                }
                 assertTrue("${p.name}: ${ts.size} trains in ${p.blocks[b].tag} ${p.blocks[b].name} " + plc.plant.trains.map { "${it.id}@${"%.1f".format(it.s)}/${"%.2f".format(it.v)}" } + " L=${"%.0f".format(p.length)} blocks=" + p.blocks.map { "${it.tag}:${it.start.toInt()}-${it.end.toInt()}" } + " launch=${plc.launchState}", ts.size <= 1)
             }
         }
@@ -174,6 +181,35 @@ class RideCycleTest {
         step(plc, 120.0)
         val t = plc.plant.trains[0]
         assertTrue("${spec.name} train at ${t.s}", kotlin.math.abs(t.s - 70.0) < 1.0)
+    }
+
+    @Test fun movingBlockStationMovesTogether() {
+        // TT2 with a train at load, unload and wait: on dispatch all three move off within a few seconds of each other.
+        val plc = runCycles(CoasterLibrary.byId("tt2"), 3, 3, NOOP)
+        val p = plc.profile
+        val unload = p.blocks.first { it.kind == BlockKind.UNLOAD }.index
+        var waited = 0.0
+        while (!(plc.trainInStation && plc.occ[unload] != -1 && plc.occ[unload - 1] != -1) && waited < 600) {
+            step(plc, 0.5); waited += 0.5
+        }
+        step(plc, 10.0) // unload dwell
+        press(plc) { plc.inputs.loadReady = it }; press(plc) { plc.inputs.unloadReady = it }
+        waited = 0.0
+        while (!plc.dispatchReady && waited < 120) { step(plc, 0.5); waited += 0.5 }
+        assertTrue("dispatch not ready: " + plc.permissives.filter { !it.ok }, plc.dispatchReady)
+        val ids = listOf(plc.occ[0], plc.occ[unload], plc.occ[unload - 1])
+        assertTrue("station not full: $ids", ids.none { it == -1 })
+        plc.inputs.dispatchL = true; plc.inputs.dispatchR = true
+        step(plc, 0.2)
+        plc.inputs.dispatchL = false; plc.inputs.dispatchR = false
+        val started = DoubleArray(3) { -1.0 }
+        var t = 0.0
+        while (t < 30 && started.any { it < 0 }) {
+            step(plc, dt); t += dt
+            ids.forEachIndexed { k, id -> if (started[k] < 0 && plc.trainSpeed(id) > 0.3) started[k] = t }
+        }
+        assertTrue("moves: load/unload/wait started at ${started.toList()}", started.all { it in 0.0..6.0 })
+        assertTrue(plc.alarms.active.map { it.text }.toString(), plc.alarms.active.none { it.severity.ordinal <= Severity.CSTOP.ordinal })
     }
 
     @Test fun swingLaunchUsesSpikeAndCrests() {

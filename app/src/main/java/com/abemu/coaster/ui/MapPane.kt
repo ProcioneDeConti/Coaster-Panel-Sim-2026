@@ -75,7 +75,7 @@ fun MapPane(vm: SimViewModel, modifier: Modifier = Modifier) {
                     Indicator(id != -1, Hmi.Bad, Hmi.Ok, 10)
                     HmiLabel(" ${b.tag}", 11.sp, bold = true, modifier = Modifier.width(34.dp))
                     HmiLabel(b.name, 10.sp, color = Hmi.Dim, modifier = Modifier.weight(1f))
-                    HmiLabel(if (id != -1) "T$id" else "—", 11.sp, bold = true, modifier = Modifier.width(28.dp))
+                    HmiLabel(if (id != -1) "T$id" + plc.pending[b.index].let { f -> if (f != -1) "+T$f" else "" } else "—", 11.sp, bold = true, modifier = Modifier.width(48.dp))
                     if (b.stopPos != null) Indicator(brk.isOpen, Hmi.Ok, Hmi.Bad, 10) else Box(Modifier.width(10.dp))
                 }
             }

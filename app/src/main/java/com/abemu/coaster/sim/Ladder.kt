@@ -84,12 +84,18 @@ object Ladder {
                 val k = b.index
                 val nx = plc.next(k)
                 if (b.kind == BlockKind.BRAKE_RUN || b.kind == BlockKind.UNLOAD) {
-                    add(Rung("Blocks", "${b.tag} ${b.name}: auto release when the next block is clear.",
-                        listOf(
-                            xic("RIDE_RUN", running), xic("${b.tag}_OCCUPIED") { plc.occ[k] != -1 },
-                            xio("${bl[nx].tag}_OCCUPIED") { plc.occ[nx] != -1 },
-                            xio("${bl[nx].tag}_PX_ENTRY") { plc.entry(nx) },
-                        ),
+                    val clear = listOf(
+                        xio("${bl[nx].tag}_OCCUPIED") { plc.occ[nx] != -1 },
+                        xio("${bl[nx].tag}_PX_ENTRY") { plc.entry(nx) },
+                    )
+                    val follow = plc.stationZone(nx)
+                    add(Rung("Blocks", "${b.tag} ${b.name}: auto release when the next block is clear" +
+                        if (follow) ", or (moving block) when its train is released and departing." else ".",
+                        listOf(xic("RIDE_RUN", running), xic("${b.tag}_OCCUPIED") { plc.occ[k] != -1 }) +
+                            if (follow) listOf(Branch(listOf(clear, listOf(
+                                xic("${bl[nx].tag}_DEPARTING") { plc.departing(nx) },
+                                xio("${bl[nx].tag}_PX_ENTRY") { plc.entry(nx) },
+                            )))) else clear,
                         Coil("${b.tag}_RELEASE", CoilType.OTL) { plc.releaseLatch[k] }))
                 }
                 if (b.stopPos != null && b.kind != BlockKind.LAUNCH) {

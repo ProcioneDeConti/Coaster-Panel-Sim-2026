@@ -67,6 +67,8 @@ class RidePlc(val plant: Plant) {
     /** Block occupancy as tracked by the PLC: train number, or -1 when clear. */
     val occ = IntArray(n) { -1 }
     private val leaving = BooleanArray(n)
+    /** Moving-block station: train that has followed the departing train into the block, -1 if none. */
+    val pending = IntArray(n) { -1 }
     private val prevSensor = BooleanArray(n)
     val releaseLatch = BooleanArray(n)
     private val latchedTrain = IntArray(n) { -1 }
@@ -173,6 +175,18 @@ class RidePlc(val plant: Plant) {
     val eStopped get() = state == RideState.ESTOP
     fun next(i: Int) = (i + 1) % n
     fun nextClear(i: Int) = occ[next(i)] == -1 && !entry(next(i))
+    val movingBlock get() = profile.spec.movingBlockStation
+    /** Station zone of a moving-block ride: a following train may enter while the train ahead is leaving. */
+    fun stationZone(b: Int) = movingBlock && profile.blocks[b].kind.let { it == BlockKind.STATION || it == BlockKind.UNLOAD }
+    /** The train in [b] is released and on its way out, with no follower already behind it. */
+    fun departing(b: Int) = occ[b] != -1 && pending[b] == -1 &&
+        (leaving[b] || (releaseLatch[b] && latchedTrain[b] == occ[b] && trainSpeed(occ[b]) > 0.3))
+    /**
+     * Next block clear, or (moving-block station) its train departing so this one, standing at its stop, can follow it
+     * in. A train still arriving is never waved through on a departing train; it stops first.
+     */
+    fun followClear(i: Int) = nextClear(i) || (stationZone(next(i)) && departing(next(i)) && !entry(next(i)) &&
+        plant.trainAtStop(i)?.let { it.id == occ[i] && abs(it.v) < 0.05 } == true)
     fun trainSpeed(id: Int) = plant.trains.firstOrNull { it.id == id }?.v ?: 0.0
 
     val trainInStation get() = occ[0] != -1 && plant.stationTrain() != null
@@ -270,6 +284,15 @@ class RidePlc(val plant: Plant) {
         safeStdT = if (mismatch) safeStdT + dt else 0.0
         if (safeStdT > 1.0) alarms.raise("SAFE_STD", "Safety/standard discrepancy – safety outputs OFF, standard task not stopped", Severity.ESTOP)
         if (plant.collision) alarms.raise("COLLIDE", "Train spacing violation – contact detected", Severity.ESTOP)
+        if (movingBlock) {
+            // Moving-block anti-collision: a following train must keep a clear gap to the tail of the train ahead.
+            val close = plant.trains.any { a ->
+                a.spike <= 0 && plant.trains.any { b ->
+                    b !== a && b.spike <= 0 && profile.ahead(a.s, b.s) < profile.trainLength + 3.0 && a.v > 0.2
+                }
+            }
+            if (close) alarms.raise("MB_GAP", "Moving block – following train inside minimum spacing", Severity.ESTOP)
+        }
         if (hasSwitch) {
             if (plant.switchOverrun) alarms.raise("SW_OVR", "Switch track not aligned – train stopped at the end of the switch table", Severity.ESTOP)
             val there = if (switchCmd) switchSpikeLs else switchStationLs
@@ -419,13 +442,17 @@ class RidePlc(val plant: Plant) {
         if (!i.manualRelease[0] || occ[0] == -1 || !manualOk) manualDepart = false
         for (b in 0 until n) {
             val blk = profile.blocks[b]
-            if (releaseLatch[b] && (occ[next(b)] == latchedTrain[b] || occ[b] == -1)) releaseLatch[b] = false
+            // The release ends once the train reaches the next block (as its owner, or following in behind a departing train).
+            val nb = next(b)
+            if (releaseLatch[b] && (occ[nb] == latchedTrain[b] || pending[nb] == latchedTrain[b] || occ[b] != latchedTrain[b])) {
+                releaseLatch[b] = false
+            }
             // Unload station: train must dwell at the stop (passengers exit) before release.
             val atStop = occ[b] != -1 && plant.trainAtStop(b)?.let { it.id == occ[b] && abs(it.v) < 0.05 } == true
             dwellT[b] = if (blk.kind == BlockKind.UNLOAD && atStop) dwellT[b] + dt else 0.0
             val unloaded = blk.kind != BlockKind.UNLOAD || dwellT[b] >= unloadDwellSec
             if ((blk.kind == BlockKind.BRAKE_RUN || blk.kind == BlockKind.UNLOAD) && running && occ[b] != -1 &&
-                nextClear(b) && unloaded && !releaseLatch[b] && transferState == TransferState.IDLE
+                followClear(b) && unloaded && !releaseLatch[b] && transferState == TransferState.IDLE
             ) latch(b)
             if (manualOk && i.manualRelease[b] && occ[b] != -1 && nextClear(b)) {
                 manualOpen[b] = when (blk.kind) {
@@ -641,6 +668,12 @@ class RidePlc(val plant: Plant) {
         when {
             occ[p] == -1 ->
                 alarms.raise("UNEXP$b", "${blk.tag} entry prox: unexpected train detected", Severity.ESTOP)
+            occ[b] != -1 && stationZone(b) && occ[p] != -1 && pending[b] == -1 &&
+                (leaving[b] || (releaseLatch[b] && latchedTrain[b] == occ[b])) -> {
+                // Moving block: following the departing train in; it takes over the block when that train clears.
+                pending[b] = occ[p]
+                leaving[p] = true
+            }
             occ[b] != -1 ->
                 alarms.raise("OVR$b", "${blk.tag} block overrun – entered while occupied", Severity.ESTOP)
             else -> {
@@ -653,7 +686,8 @@ class RidePlc(val plant: Plant) {
     private fun onCleared(b: Int) {
         val p = (b - 1 + n) % n
         if (leaving[p]) {
-            occ[p] = -1
+            occ[p] = pending[p]
+            pending[p] = -1
             leaving[p] = false
         }
     }
@@ -661,11 +695,19 @@ class RidePlc(val plant: Plant) {
     /** Re-derive block occupancy from train positions (maintenance "train verify"). */
     fun resyncTracking() {
         occ.fill(-1)
+        pending.fill(-1)
         leaving.fill(false)
         releaseLatch.fill(false)
         for (tr in plant.trains) {
-            val b = profile.blockAt(tr.s).index
-            occ[b] = tr.id
+            val blk = profile.blockAt(tr.s)
+            val b = blk.index
+            val other = plant.trains.firstOrNull { it.id == occ[b] }
+            when {
+                other == null -> occ[b] = tr.id
+                // Two trains in one moving-block station zone: the one further along owns it, the other follows.
+                profile.ahead(blk.start, tr.s) > profile.ahead(blk.start, other.s) -> { pending[b] = other.id; occ[b] = tr.id }
+                else -> pending[b] = tr.id
+            }
         }
         for (b in 0 until n) prevSensor[b] = entry(b)
     }

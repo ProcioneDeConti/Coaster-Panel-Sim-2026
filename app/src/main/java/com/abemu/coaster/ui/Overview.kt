@@ -90,7 +90,7 @@ fun BlockStatusFrame(plc: com.abemu.coaster.sim.RidePlc, modifier: Modifier = Mo
                     Indicator(id != -1, Hmi.Bad, Hmi.Ok)
                     HmiLabel(if (id != -1) " OCCUPIED" else " CLEAR", 11.sp)
                 }
-                HmiLabel(if (id != -1) "T$id" else "—", 11.sp, bold = true, modifier = Modifier.weight(0.6f))
+                HmiLabel(if (id != -1) "T$id" + plc.pending[b.index].let { f -> if (f != -1) "+T$f" else "" } else "—", 11.sp, bold = true, modifier = Modifier.weight(0.6f))
                 HmiLabel(
                     when {
                         b.kind == BlockKind.LIFT -> if (plc.plant.chainSpeed > 0.1) "CHAIN RUN" else "CHAIN STOP"
