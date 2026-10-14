@@ -38,6 +38,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.abemu.coaster.AccessLevel
 import com.abemu.coaster.SimViewModel
 import com.abemu.coaster.sim.RideState
 import com.abemu.coaster.sim.Severity
@@ -86,6 +87,7 @@ private val clockFmt = DateTimeFormatter.ofPattern("HH:mm:ss")
 @Composable
 fun HmiTerminal(vm: SimViewModel, modifier: Modifier = Modifier) {
     var page by rememberSaveable { mutableStateOf(HmiPage.OVERVIEW) }
+    var showLogin by remember { mutableStateOf(false) }
     vm.frame.longValue
     val plc = vm.plc
 
@@ -106,7 +108,7 @@ fun HmiTerminal(vm: SimViewModel, modifier: Modifier = Modifier) {
                 .background(Hmi.Screen)
                 .border(3.dp, Color.Black),
         ) {
-            TitleBar(vm, page)
+            TitleBar(vm, page) { showLogin = true }
             AlarmBanner(vm) { page = HmiPage.ALARMS }
             Box(Modifier.weight(1f).fillMaxWidth().padding(6.dp)) {
                 when (page) {
@@ -115,10 +117,13 @@ fun HmiTerminal(vm: SimViewModel, modifier: Modifier = Modifier) {
                     HmiPage.ALARMS -> AlarmsPage(vm)
                     HmiPage.MAINT -> MaintPage(vm)
                     HmiPage.IO -> IoPage(vm)
-                    HmiPage.SIM -> SimPage(vm) { page = HmiPage.EDITOR }
-                    HmiPage.EDITOR -> EditorPage(vm) { page = HmiPage.SIM }
+                    HmiPage.SIM -> if (vm.access >= AccessLevel.INSTRUCTOR) SimPage(vm) { page = HmiPage.EDITOR }
+                        else LockedPage("INSTRUCTOR") { showLogin = true }
+                    HmiPage.EDITOR -> if (vm.access >= AccessLevel.INSTRUCTOR) EditorPage(vm) { page = HmiPage.SIM }
+                        else LockedPage("INSTRUCTOR") { showLogin = true }
                     HmiPage.TRENDS -> TrendsPage(vm)
                 }
+                if (showLogin) LoginPad(vm) { showLogin = false }
             }
         }
         Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -130,7 +135,55 @@ fun HmiTerminal(vm: SimViewModel, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun TitleBar(vm: SimViewModel, page: HmiPage) {
+private fun LockedPage(level: String, onLogin: () -> Unit) {
+    Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+        Text("🔒", fontSize = 40.sp)
+        HmiLabel("This screen requires $level access.", 14.sp, bold = true)
+        Spacer(Modifier.height(10.dp))
+        HmiButton("LOG IN", activeColor = Hmi.Info, active = true) { onLogin() }
+    }
+}
+
+/** PIN keypad. The PIN alone selects the access level, as on many PanelView security setups. */
+@Composable
+fun LoginPad(vm: SimViewModel, onDismiss: () -> Unit) {
+    var pin by remember { mutableStateOf("") }
+    var err by remember { mutableStateOf("") }
+    Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.55f)).clickable(onClick = onDismiss), contentAlignment = Alignment.Center) {
+        Column(
+            Modifier.width(300.dp).background(Hmi.Screen).border(2.dp, Color.Black).clickable(enabled = false) {}.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            HmiLabel("LOGIN – current: ${vm.access.label}", 13.sp, bold = true)
+            Box(Modifier.fillMaxWidth().background(Color.White).border(1.dp, Color(0xFF7A8189)).padding(8.dp)) {
+                Text(if (pin.isEmpty()) "Enter PIN" else "●".repeat(pin.length), fontSize = 18.sp,
+                    color = if (pin.isEmpty()) Hmi.Dim else Hmi.Text, fontFamily = FontFamily.Monospace)
+            }
+            if (err.isNotEmpty()) HmiLabel(err, 11.sp, color = Hmi.Bad)
+            listOf(listOf("1", "2", "3"), listOf("4", "5", "6"), listOf("7", "8", "9"), listOf("CLR", "0", "⌫")).forEach { row ->
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    row.forEach { k ->
+                        HmiButton(k, Modifier.weight(1f), fontSize = 16.sp) {
+                            err = ""
+                            pin = when (k) { "CLR" -> ""; "⌫" -> pin.dropLast(1); else -> (pin + k).take(8) }
+                        }
+                    }
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                HmiButton("LOG OUT", Modifier.weight(1f)) { vm.access = AccessLevel.OPERATOR; onDismiss() }
+                HmiButton("ENTER", Modifier.weight(1f), active = true, activeColor = Hmi.Ok) {
+                    val lvl = AccessLevel.forPin(pin)
+                    if (lvl == null) { err = "Invalid PIN"; pin = "" } else { vm.access = lvl; onDismiss() }
+                }
+            }
+            HmiButton("CANCEL", Modifier.fillMaxWidth()) { onDismiss() }
+        }
+    }
+}
+
+@Composable
+private fun TitleBar(vm: SimViewModel, page: HmiPage, onUser: () -> Unit) {
     val plc = vm.plc
     Row(
         Modifier.fillMaxWidth().background(Hmi.Header).padding(horizontal = 8.dp, vertical = 5.dp),
@@ -145,6 +198,13 @@ private fun TitleBar(vm: SimViewModel, page: HmiPage) {
         Spacer(Modifier.width(8.dp))
         Box(Modifier.border(1.dp, Color(0xFFAFC4DD), RoundedCornerShape(3.dp)).padding(horizontal = 6.dp, vertical = 2.dp)) {
             Text("MODE: ${plc.inputs.mode.label}", color = Color.White, fontSize = 11.sp)
+        }
+        Spacer(Modifier.width(8.dp))
+        Box(
+            Modifier.border(1.dp, Color(0xFFAFC4DD), RoundedCornerShape(3.dp)).clickable(onClick = onUser)
+                .padding(horizontal = 6.dp, vertical = 2.dp),
+        ) {
+            Text("👤 ${vm.access.label}", color = Color.White, fontSize = 11.sp)
         }
         Spacer(Modifier.width(8.dp))
         Text(LocalTime.now().format(clockFmt), color = Color.White, fontSize = 12.sp, fontFamily = FontFamily.Monospace)

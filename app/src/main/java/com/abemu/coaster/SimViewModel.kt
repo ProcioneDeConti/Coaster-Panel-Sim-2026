@@ -24,6 +24,15 @@ import kotlinx.coroutines.launch
  * physics stepped once per scan. Everything runs on the main thread, so the UI can read PLC
  * fields directly; [frame] ticks each update to drive recomposition.
  */
+/** HMI login levels. PINs are fixed for this emulator. */
+enum class AccessLevel(val label: String, val pin: String?) {
+    OPERATOR("OPERATOR", null), MAINTENANCE("MAINTENANCE", "2580"), INSTRUCTOR("INSTRUCTOR", "1234");
+
+    companion object {
+        fun forPin(pin: String) = entries.firstOrNull { it.pin == pin }
+    }
+}
+
 class SimViewModel : ViewModel() {
     var coasterId by mutableStateOf(CoasterLibrary.default(ProfileType.LIFT).id); private set
     var trainCount by mutableIntStateOf(3); private set
@@ -35,6 +44,7 @@ class SimViewModel : ViewModel() {
     var volume by mutableFloatStateOf(0.5f)
     val frame = mutableLongStateOf(0L)
     val trends = com.abemu.coaster.sim.TrendRecorder()
+    var access by mutableStateOf(AccessLevel.OPERATOR)
 
     private val scanDt = 0.02
 

@@ -142,5 +142,12 @@ class RideCycleTest {
         assertEquals(null, plc.alarms.firstOut)
     }
 
+    @Test fun diagnosticsCoverAlarmCodes() {
+        val codes = listOf("ESTOP_PB", "ESTOP_LOAD", "ESTOP_UNLOAD", "SAFETY", "AIR", "LIFT_VFD", "LIFT_OL", "LSM", "LSM_SPD",
+            "ROLLBACK", "COLLIDE", "GATE", "ROW3", "BRK2", "STALL1", "UNEXP2", "OVR3")
+        codes.forEach { assertTrue("no diagnosis for $it", com.abemu.coaster.sim.Diagnostics.forCode(it) != null) }
+        assertEquals(null, com.abemu.coaster.sim.Diagnostics.forCode("BRKX"))
+    }
+
     companion object { val NOOP: (RidePlc) -> Unit = {} }
 }

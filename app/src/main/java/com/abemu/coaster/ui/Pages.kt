@@ -3,6 +3,7 @@ package com.abemu.coaster.ui
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -130,6 +131,7 @@ fun AlarmsPage(vm: SimViewModel) {
     vm.frame.longValue
     val plc = vm.plc
     var showHistory by remember { mutableStateOf(false) }
+    var selected by remember { mutableStateOf<Pair<String, String>?>(null) } // code to text
     Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
             HmiButton("ACTIVE (${plc.alarms.active.size})", active = !showHistory, activeColor = Hmi.Info) { showHistory = false }
@@ -146,7 +148,7 @@ fun AlarmsPage(vm: SimViewModel) {
         LazyColumn(Modifier.weight(1f).fillMaxWidth().background(Color.White).border(1.dp, Color(0xFF8C939A))) {
             if (showHistory) {
                 items(plc.alarms.history.toList()) { e ->
-                    AlarmRow(e.time, e.severity.label, sevColor(e.severity), e.event, e.text, false)
+                    AlarmRow(e.time, e.severity.label, sevColor(e.severity), e.event, e.text, selected?.first == e.code && selected?.second == e.text) { selected = e.code to e.text }
                 }
             } else {
                 val act = plc.alarms.active
@@ -159,7 +161,26 @@ fun AlarmsPage(vm: SimViewModel) {
                         !a.acked -> "RTN/UNACK"
                         else -> "RESET REQ"
                     }
-                    AlarmRow(a.since, a.severity.label, sevColor(a.severity), state, a.text, !a.acked && flasher())
+                    AlarmRow(a.since, a.severity.label, sevColor(a.severity), state, a.text, (!a.acked && flasher()) || selected?.first == a.code) { selected = a.code to a.text }
+                }
+            }
+        }
+        // Diagnostics for the selected alarm
+        val sel = selected
+        val diag = sel?.let { com.abemu.coaster.sim.Diagnostics.forCode(it.first) }
+        HmiFrame(if (sel == null) "DIAGNOSTICS – tap an alarm" else "DIAGNOSTICS – ${sel.second}", Modifier.fillMaxWidth()) {
+            when {
+                sel == null -> HmiLabel("Select an alarm above to see probable causes and corrective actions.", 11.sp, color = Hmi.Dim)
+                diag == null -> HmiLabel("No diagnostic guidance for this event (informational).", 11.sp, color = Hmi.Dim)
+                else -> Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Column(Modifier.weight(1f)) {
+                        HmiLabel("PROBABLE CAUSE", 10.sp, bold = true, color = Hmi.Dim)
+                        diag.causes.forEach { HmiLabel("• $it", 11.sp) }
+                    }
+                    Column(Modifier.weight(1f)) {
+                        HmiLabel("CORRECTIVE ACTION", 10.sp, bold = true, color = Hmi.Dim)
+                        diag.actions.forEachIndexed { i, t -> HmiLabel("${i + 1}. $t", 11.sp) }
+                    }
                 }
             }
         }
@@ -167,9 +188,9 @@ fun AlarmsPage(vm: SimViewModel) {
 }
 
 @Composable
-private fun AlarmRow(time: String, sev: String, color: Color, state: String, text: String, highlight: Boolean) {
+private fun AlarmRow(time: String, sev: String, color: Color, state: String, text: String, highlight: Boolean, onClick: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().background(if (highlight) color.copy(alpha = 0.25f) else Color.Transparent)
+        Modifier.fillMaxWidth().background(if (highlight) color.copy(alpha = 0.25f) else Color.Transparent).clickable(onClick = onClick)
             .padding(horizontal = 6.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -187,6 +208,7 @@ private fun AlarmRow(time: String, sev: String, color: Color, state: String, tex
 
 @Composable
 fun MaintPage(vm: SimViewModel) {
+    val maintAccess = vm.access >= com.abemu.coaster.AccessLevel.MAINTENANCE
     vm.frame.longValue
     val plc = vm.plc
     val inp = plc.inputs
@@ -216,7 +238,8 @@ fun MaintPage(vm: SimViewModel) {
                 }
             }
             HmiFrame("MAINTENANCE BRAKE CONTROL  (key: MAINT – INTERLOCKS BYPASSED)") {
-                val maint = m == KeyMode.MAINT && plc.powered && !plc.eStopped
+                val maint = m == KeyMode.MAINT && plc.powered && !plc.eStopped && maintAccess
+                if (!maintAccess) HmiLabel("🔒 Log in as MAINTENANCE to use these controls.", 11.sp, color = Hmi.Bad)
                 plc.profile.blocks.filter { it.stopPos != null }.forEach { b ->
                     val brk = plc.plant.brakes[b.index]
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -238,7 +261,7 @@ fun MaintPage(vm: SimViewModel) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     HmiLabel("Air compressor", 11.sp, modifier = Modifier.weight(1f))
                     HmiButton(if (plc.plant.compressorEnabled) "ON" else "OFF", Modifier.width(80.dp),
-                        active = plc.plant.compressorEnabled) { plc.plant.compressorEnabled = !plc.plant.compressorEnabled }
+                        enabled = maintAccess, active = plc.plant.compressorEnabled) { plc.plant.compressorEnabled = !plc.plant.compressorEnabled }
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     HmiLabel("Block tracking", 11.sp, modifier = Modifier.weight(1f))
@@ -272,8 +295,8 @@ fun MaintPage(vm: SimViewModel) {
                 ValueBox("Transfer state", plc.transferState.label)
                 ValueBox("Trains in storage", plc.plant.stored.toString())
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    HmiButton("STORE TRAIN", Modifier.weight(1f), m == KeyMode.MAINT) { msg = plc.requestTransfer(true) }
-                    HmiButton("RETRIEVE TRAIN", Modifier.weight(1f), m == KeyMode.MAINT) { msg = plc.requestTransfer(false) }
+                    HmiButton("STORE TRAIN", Modifier.weight(1f), m == KeyMode.MAINT && maintAccess) { msg = plc.requestTransfer(true) }
+                    HmiButton("RETRIEVE TRAIN", Modifier.weight(1f), m == KeyMode.MAINT && maintAccess) { msg = plc.requestTransfer(false) }
                 }
                 if (msg.isNotEmpty()) HmiLabel(msg, 11.sp, color = Hmi.Info)
             }
