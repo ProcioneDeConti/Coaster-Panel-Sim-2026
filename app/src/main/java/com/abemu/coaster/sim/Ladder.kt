@@ -129,6 +129,14 @@ object Ladder {
                     listOf(xic("LAUNCH_SEQ.VERIFY") { plc.launchState == LaunchState.VERIFY || plc.launchState == LaunchState.ROLLBACK },
                         xio("LSM_CREST_PX") { p.bodyAt(prof.crestSensor) }),
                     Coil("ROLLBACK", CoilType.OTL) { plc.launchState == LaunchState.ROLLBACK }))
+                if (plc.hasSwitch) {
+                    add(Rung("Launch", "Switch track slides to the spike line once a train is at the launch position; returns to the station line after the launch when the table is clear.",
+                        listOf(xic("LAUNCH_REQ.SPIKE") { plc.switchCmd }, xio("FAULT_ESTOP") { plc.eStopped }),
+                        Coil("SWITCH_TO_SPIKE") { p.switchToSpikeCmd }))
+                    add(Rung("Launch", "Launch charge permitted only with the switch track locked to the spike line.",
+                        listOf(xic("SWITCH_SPIKE_LS") { plc.switchSpikeLs }, xic("LSM_DRIVE_READY") { plc.lsmReady }),
+                        Coil("SWING_PERMIT") { plc.switchSpikeLs && plc.lsmReady }))
+                }
             }
 
             // ---------------- Station outputs

@@ -66,6 +66,7 @@ fun DrillBanner(vm: SimViewModel, onClick: () -> Unit) {
 
 @Composable
 private fun ScenarioPicker(vm: SimViewModel) {
+    vm.frame.longValue
     Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         Column(Modifier.weight(2.2f).fillMaxHeight().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             DrillKind.entries.forEach { kind ->
@@ -118,6 +119,7 @@ private fun GradeChip(grade: String) {
 
 @Composable
 private fun DrillView(vm: SimViewModel, d: Drill) {
+    vm.frame.longValue
     Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         Column(Modifier.weight(1.3f).fillMaxHeight().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             HmiFrame("${d.scenario.kind.label} – ${d.scenario.title.uppercase()}") {
@@ -155,13 +157,14 @@ private fun DrillView(vm: SimViewModel, d: Drill) {
                     }
                 }
             }
-            PenaltyList(d, Modifier.weight(1f))
+            PenaltyList(vm, d, Modifier.weight(1f))
         }
     }
 }
 
 @Composable
-private fun PenaltyList(d: Drill, modifier: Modifier) {
+private fun PenaltyList(vm: SimViewModel, d: Drill, modifier: Modifier) {
+    vm.frame.longValue
     HmiFrame("PENALTIES (−${d.penalties.sumOf { it.points } + d.timePenalty})", modifier) {
         if (d.penalties.isEmpty() && d.timePenalty == 0) HmiLabel("None so far.", 11.sp, color = Hmi.Dim)
         LazyColumn {
@@ -178,6 +181,7 @@ private fun PenaltyList(d: Drill, modifier: Modifier) {
 
 @Composable
 private fun DrillResultView(vm: SimViewModel, d: Drill) {
+    vm.frame.longValue
     Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         HmiFrame("DRILL RESULT – ${d.scenario.title.uppercase()}", Modifier.weight(1f).fillMaxHeight()) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -201,6 +205,6 @@ private fun DrillResultView(vm: SimViewModel, d: Drill) {
                 HmiButton("CLOSE") { vm.dismissDrill() }
             }
         }
-        PenaltyList(d, Modifier.weight(1f).fillMaxHeight())
+        PenaltyList(vm, d, Modifier.weight(1f).fillMaxHeight())
     }
 }

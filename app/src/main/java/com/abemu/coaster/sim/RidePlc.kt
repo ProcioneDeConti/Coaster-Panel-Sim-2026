@@ -10,7 +10,7 @@ enum class RideState(val label: String) {
 }
 
 enum class LaunchState(val label: String) {
-    IDLE("IDLE"), CHARGING("CHARGING"), FIRING("LAUNCH"), VERIFY("VERIFY CREST"), ROLLBACK("ROLLBACK")
+    IDLE("IDLE"), CHARGING("CHARGING"), FIRING("LAUNCH"), SWING("SWING"), VERIFY("VERIFY CREST"), ROLLBACK("ROLLBACK")
 }
 
 enum class TransferState(val label: String) {
@@ -91,6 +91,8 @@ class RidePlc(val plant: Plant) {
     private var transferT = 0.0
     private var launchTrain = -1
     private var launchExitSeen = 0
+    /** Swing launch stage: 0 forward, 1 backward, 2 final forward (single launches go straight to 2). */
+    var launchStage = 2; private set
     private var tDispL = -9.0
     private var tDispR = -9.0
     private var twoHandSpent = false
@@ -124,6 +126,12 @@ class RidePlc(val plant: Plant) {
     val airOk get() = fx("AIR_PRESS_SW", plant.airPsi >= 75)
     val crestPx get() = fx("LIFT_CREST_PX", plant.bodyAt(profile.liftCrestSensor))
     val lsmReady get() = fx("LSM_DRIVE_READY", !plant.faults.lsmFault)
+    val hasSwitch get() = profile.spikeHeight > 0
+    val switchStationLs get() = fx("SWITCH_STATION_LS", plant.switchStationLs)
+    val switchSpikeLs get() = fx("SWITCH_SPIKE_LS", plant.switchSpikeLs)
+    /** Switch track commanded to the spike line (exposed for the HMI and ladder). */
+    var switchCmd = false; private set
+    private var switchTravelT = 0.0
     val estopPbOk get() = fx("ESTOP_PB_NC", !inputs.estopPressed)
     val loadEstopOk get() = fx("LOAD_STAND_ESTOP_NC", !inputs.loadStandEstop)
     val unloadEstopOk get() = fx("UNLOAD_STAND_ESTOP_NC", !inputs.unloadStandEstop)
@@ -199,6 +207,7 @@ class RidePlc(val plant: Plant) {
         plant.liftRunCmd = forces["LIFT_VFD_RUN"] ?: plant.liftRunCmd
         plant.lsmFireCmd = forces["LSM_FIRE"] ?: plant.lsmFireCmd
         plant.lsmPositionCmd = forces["LSM_POSITION"] ?: plant.lsmPositionCmd
+        plant.switchToSpikeCmd = forces["SWITCH_TO_SPIKE"] ?: plant.switchToSpikeCmd
         plant.gatesOpenCmd = forces["GATE_OPEN_SOL"] ?: gateCmd
         plant.restraintUnlockCmd = forces["RESTR_UNLOCK_SOL"] ?: restraintCmd
     }
@@ -261,6 +270,13 @@ class RidePlc(val plant: Plant) {
         safeStdT = if (mismatch) safeStdT + dt else 0.0
         if (safeStdT > 1.0) alarms.raise("SAFE_STD", "Safety/standard discrepancy – safety outputs OFF, standard task not stopped", Severity.ESTOP)
         if (plant.collision) alarms.raise("COLLIDE", "Train spacing violation – contact detected", Severity.ESTOP)
+        if (hasSwitch) {
+            if (plant.switchOverrun) alarms.raise("SW_OVR", "Switch track not aligned – train stopped at the end of the switch table", Severity.ESTOP)
+            val there = if (switchCmd) switchSpikeLs else switchStationLs
+            switchTravelT = if (!there) switchTravelT + dt else 0.0
+            alarms.condition("SW_POS", "Switch track failed to reach ${if (switchCmd) "SPIKE" else "STATION"} position",
+                Severity.CSTOP, switchTravelT > 9.0)
+        }
 
         for (b in 0 until n) {
             val brk = plant.brakes[b]
@@ -295,6 +311,7 @@ class RidePlc(val plant: Plant) {
         if (rise("silence", i.silence)) { alarms.silence(); alarms.acknowledgeAll() }
         if (rise("reset", i.faultReset)) {
             plant.collision = false
+            plant.switchOverrun = false
             val stopFaults = alarms.active.count { !it.condition && it.severity.ordinal <= Severity.CSTOP.ordinal }
             val left = alarms.reset()
             if (stopFaults > 0) trackClear("fault cleared")
@@ -372,7 +389,7 @@ class RidePlc(val plant: Plant) {
             Permissive("Unload side operator ready", unloadReady),
             Permissive("${profile.blocks[1].tag} ${profile.blocks[1].name} clear", nextClear(0)),
             Permissive("Air pressure ≥ 75 psi", airOk),
-        )
+        ) + if (hasSwitch) listOf(Permissive("Switch track aligned to station", switchStationLs && !switchCmd)) else emptyList()
         dispatchReady = permissives.all { it.ok } && !releaseLatch[0]
 
         val single = i.singleButtonDispatch && (i.dispatchL || i.dispatchR)
@@ -429,7 +446,8 @@ class RidePlc(val plant: Plant) {
         for (b in 0 until n) {
             val blk = profile.blocks[b]
             val open = when (blk.kind) {
-                BlockKind.LAUNCH -> launchState == LaunchState.FIRING || launchState == LaunchState.VERIFY
+                BlockKind.LAUNCH -> launchState == LaunchState.FIRING || launchState == LaunchState.SWING ||
+                    launchState == LaunchState.VERIFY
                 BlockKind.LIFT -> false
                 else -> (releaseLatch[b] && autoRelease) || manualOpen[b]
             } || (maint && maintBrakeOpen[b])
@@ -451,7 +469,7 @@ class RidePlc(val plant: Plant) {
         } else {
             plant.liftRunCmd = false
             val launchRelease = rise("mRel1", i.manualRelease[1])
-            runLaunch(dt, running, manualOk && launchRelease)
+            runLaunch(dt, running, manualOk, manualOk && launchRelease)
         }
 
         // ---------- Transfer ----------
@@ -477,20 +495,56 @@ class RidePlc(val plant: Plant) {
         }
     }
 
-    private fun runLaunch(dt: Double, running: Boolean, manualRelease: Boolean) {
+    private var launchRequest = false
+
+    private fun runLaunch(dt: Double, running: Boolean, manual: Boolean, manualRelease: Boolean) {
         launchT += dt
         val ready = occ[1] != -1 && plant.trainAtStop(1)?.let { abs(it.v) < 0.05 } == true
         if (eStopped && launchState != LaunchState.ROLLBACK) launchState = LaunchState.IDLE
         when (launchState) {
-            LaunchState.IDLE -> if (ready && nextClear(1) && lsmReady && (running || manualRelease)) {
-                launchState = LaunchState.CHARGING; launchT = 0.0
+            LaunchState.IDLE -> {
+                if (ready && nextClear(1) && lsmReady && (running || manualRelease)) launchRequest = true
+                if (!ready || !lsmReady || (!running && !manual)) launchRequest = false
+                // Swing launch: slide the switch track to the spike line first; charge once it is locked there.
+                if (launchRequest) {
+                    if (!hasSwitch || switchSpikeLs) { launchState = LaunchState.CHARGING; launchT = 0.0; launchRequest = false }
+                    else if (!switchCmd) { switchCmd = true; alarms.info("SW", "Switch track to SPIKE line") }
+                }
             }
             LaunchState.CHARGING -> if (launchT > 3.0) {
                 launchState = LaunchState.FIRING; launchT = 0.0
                 launchTrain = occ[1]; launchExitSeen = plant.launchExitEvent
-                alarms.info("LSM", "Launch – train $launchTrain")
+                launchStage = if (swing != null) 0 else 2
+                alarms.info("LSM", "Launch – train $launchTrain" + if (swing != null) " (swing launch, forward)" else "")
             }
-            LaunchState.FIRING -> if (plant.launchExitEvent != launchExitSeen || launchT > profile.launchSpeed / 11.0 + 2.0) {
+            // Swing launch: fire forward, let the train fall back off the top hat, fire backward up the spike,
+            // then fire forward again as it swings back through the launch track.
+            LaunchState.SWING -> {
+                val tr = plant.trains.firstOrNull { it.id == launchTrain }
+                val onLsm = tr != null && tr.spike <= 0 && profile.inRange(tr.s, profile.launchStart - 2, profile.launchEnd)
+                val back = launchStage == 0 && onLsm && tr!!.v < -1
+                val fwd = launchStage == 1 && onLsm && tr!!.v > 1
+                when {
+                    back || fwd -> {
+                        launchStage++; launchState = LaunchState.FIRING; launchT = 0.0
+                        launchExitSeen = plant.launchExitEvent
+                        alarms.info("LSM", if (back) "Swing launch – backward" else "Swing launch – final forward")
+                    }
+                    launchT > 45.0 -> {
+                        launchState = LaunchState.ROLLBACK
+                        alarms.raise("ROLLBACK", "Swing launch – train $launchTrain did not return to the launch track", Severity.CSTOP)
+                    }
+                }
+            }
+            LaunchState.FIRING -> if (launchStage < 2) {
+                val v = trainSpeed(launchTrain)
+                val reached = abs(v) >= abs(stageTarget()) - 0.3
+                if (reached || plant.launchExitEvent != launchExitSeen || launchT > abs(stageTarget()) / 11.0 + 3.0) {
+                    launchState = LaunchState.SWING; launchT = 0.0
+                }
+            } else if (plant.launchExitEvent != launchExitSeen ||
+                launchT > profile.launchSpeed / 11.0 + profile.ahead(profile.launchStart, profile.launchEnd) / profile.launchSpeed + 2.0
+            ) {
                 launchState = LaunchState.VERIFY; launchT = 0.0
                 val v = plant.lastLaunchExitSpeed
                 val min = profile.launchSpeed * 0.92
@@ -498,15 +552,34 @@ class RidePlc(val plant: Plant) {
             }
             LaunchState.VERIFY -> when {
                 occ[next(1)] == launchTrain -> launchState = LaunchState.IDLE
-                launchT > profile.launchVerifySec -> {
+                launchT > profile.launchVerifySec || trainSpeed(launchTrain) < -0.5 -> {
                     launchState = LaunchState.ROLLBACK
                     alarms.raise("ROLLBACK", "Launch rollback – train $launchTrain failed to crest top hat", Severity.CSTOP)
                 }
             }
             LaunchState.ROLLBACK -> Unit
         }
+        // Return the switch to the station line once the launch is over and the table is clear.
+        if (hasSwitch && switchCmd && launchState == LaunchState.IDLE && !ready && !plant.switchOccupied && !eStopped) {
+            switchCmd = false
+            alarms.info("SW", "Switch track to STATION line")
+        }
+        plant.switchToSpikeCmd = hasSwitch && switchCmd
         plant.lsmFireCmd = launchState == LaunchState.FIRING && !eStopped
-        plant.lsmPositionCmd = !eStopped && launchState != LaunchState.FIRING && launchState != LaunchState.ROLLBACK
+        plant.lsmTarget = stageTarget()
+        plant.swingActive = swing != null && !eStopped &&
+            (launchState == LaunchState.FIRING || launchState == LaunchState.SWING || launchState == LaunchState.VERIFY)
+        plant.lsmPositionCmd = !eStopped && launchState != LaunchState.FIRING && launchState != LaunchState.SWING &&
+            launchState != LaunchState.ROLLBACK
+    }
+
+    private val swing get() = profile.swing
+
+    /** LSM set-point for the current launch stage, m/s (negative = backward). */
+    private fun stageTarget(): Double = when (launchStage) {
+        0 -> swing?.first ?: profile.launchSpeed
+        1 -> -(swing?.second ?: profile.launchSpeed)
+        else -> profile.launchSpeed
     }
 
     // ---------- Transfer track (maintenance) ----------

@@ -62,6 +62,10 @@ object IoMap {
                 add(pt("LSM_EXIT_PX") { p.bodyAt(prof.launchEnd) })
                 add(pt("LSM_CREST_PX") { p.bodyAt(prof.crestSensor) })
                 add(pt("LSM_DRIVE_READY", true) { !p.faults.lsmFault })
+                if (prof.spikeHeight > 0) {
+                    add(pt("SWITCH_STATION_LS", true) { p.switchStationLs })
+                    add(pt("SWITCH_SPIKE_LS", true) { p.switchSpikeLs })
+                }
             }
             for (r in 0 until prof.rows) add(pt("ROW${r + 1}_LOCKED_LS", true) { p.rowLockSensor(r) })
             prof.sensors.forEachIndexed { n, s -> add(pt("${s.name.uppercase().replace(' ', '_')}_PX") { p.proxSensor(n) }) }
@@ -71,6 +75,7 @@ object IoMap {
             bl.forEach { b -> add(pt("${b.tag}_DRIVE_TIRES", true) { p.tiresCmd[b.index] }) }
             if (prof.type == ProfileType.LIFT) add(pt("LIFT_VFD_RUN", true) { p.liftRunCmd })
             else { add(pt("LSM_FIRE", true) { p.lsmFireCmd }); add(pt("LSM_POSITION", true) { p.lsmPositionCmd }) }
+            if (prof.spikeHeight > 0) add(pt("SWITCH_TO_SPIKE", true) { p.switchToSpikeCmd })
             add(pt("GATE_OPEN_SOL", true) { p.gatesOpenCmd })
             add(pt("RESTR_UNLOCK_SOL", true) { p.restraintUnlockCmd })
             add(pt("COMPRESSOR_RUN") { p.compressorEnabled && p.airPsi < 110 })

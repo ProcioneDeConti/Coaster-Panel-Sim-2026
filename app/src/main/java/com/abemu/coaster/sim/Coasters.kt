@@ -36,6 +36,15 @@ data class CoasterSpec(
     val unloadStation: Boolean = false,
     /** If > 0, the MCBR is a tunnel block whose exit LSM launches trains to this speed (m/s). */
     val tunnelLaunch: Double = 0.0,
+    /**
+     * Swing launch (Top Thrill 2): forward LSM launch to [swing].first m/s that falls back off the top hat,
+     * a backward launch to [swing].second m/s up the rear spike, then the final forward launch to [launchSpeed].
+     */
+    val swing: Pair<Double, Double>? = null,
+    /** Height of the rear vertical spike for a swing launch, metres. */
+    val spikeHeight: Double = 0.0,
+    /** LAUNCH ride whose "launch" is an LSM-driven incline lift (Maverick): [launchSpeed] is the climb speed. */
+    val lsmLift: Boolean = false,
 )
 
 object CoasterLibrary {
@@ -57,10 +66,6 @@ object CoasterLibrary {
             hills1 = listOf(0.7, 0.5, 0.55), mcbrFrac = 0.45, hills2 = listOf(0.55, 0.4),
             cars = 6, ridersPerCar = 4, layout = 2, seed = 12, park = "Cedar Point",
             note = "Racing coaster with two side-by-side tracks; one track is modelled. Approximation of the 1978 Arrow original."),
-        CoasterSpec("maverick", "Maverick", ProfileType.LIFT, 32.0, liftSpeed = 4.0,
-            hills1 = listOf(0.5, 0.6), mcbrFrac = 0.4, hills2 = listOf(0.55, 0.45, 0.35),
-            cars = 6, ridersPerCar = 2, layout = 2, seed = 21, park = "Cedar Point", tunnelLaunch = 31.0,
-            note = "4 blocks: station, lift hill, tunnel block (second LSM launch to ~31 m/s), final brake run."),
         CoasterSpec("thunder", "Thunder Ridge", ProfileType.LIFT, 22.0,
             hills1 = listOf(0.6, 0.45), mcbrFrac = 0.45, hills2 = listOf(0.5),
             cars = 5, ridersPerCar = 4, layout = 0, seed = 2, note = "Family coaster."),
@@ -81,10 +86,15 @@ object CoasterLibrary {
             cars = 8, ridersPerCar = 4, layout = 3, seed = 17, note = "Giga coaster."),
 
         // ---------------- LSM launch ----------------
-        CoasterSpec("tt2", "Top Thrill 2", ProfileType.LAUNCH, 125.0, launchSpeed = 54.0,
-            hills1 = emptyList(), mcbrFrac = 0.25, hills2 = emptyList(), hasMcbr = false,
-            cars = 4, ridersPerCar = 4, layout = 1, seed = 30, park = "Cedar Point",
-            note = "Blocks: station, launch / top hat, brake run back to the station (via the transfer track to the launch). Simplified: the real forward-backward-forward launch is modelled as one launch to the 125 m top hat."),
+        CoasterSpec("tt2", "Top Thrill 2", ProfileType.LAUNCH, 125.0, launchSpeed = 53.6,
+            hills1 = emptyList(), mcbrFrac = 0.25, hills2 = emptyList(), hasMcbr = false, unloadStation = true,
+            cars = 5, ridersPerCar = 4, layout = 1, seed = 30, park = "Cedar Point",
+            swing = 33.1 to 45.2, spikeHeight = 128.0,
+            note = "Triple swing launch: forward to 74 mph (falls back off the top hat), backward to 101 mph up the 128 m rear spike, then forward to 120 mph over the 125 m top hat. Blocks: load, launch / top hat, brake run, unload. The dual load platforms are modelled as separate unload and load positions."),
+        CoasterSpec("maverick", "Maverick", ProfileType.LAUNCH, 32.0, launchSpeed = 9.0, lsmLift = true,
+            hills1 = listOf(0.5, 0.6), mcbrFrac = 0.4, hills2 = listOf(0.55, 0.45, 0.35),
+            cars = 6, ridersPerCar = 2, layout = 2, seed = 21, park = "Cedar Point", tunnelLaunch = 31.3,
+            note = "All-LSM: the 105 ft lift hill is an LSM incline straight out of the station (95° drop), then a tunnel block with the second LSM launch to 70 mph. 4 blocks: station, LSM lift, tunnel block, final brake run."),
         CoasterSpec("quantum", "Quantum", ProfileType.LAUNCH, 14.0, launchSpeed = 20.0,
             hills1 = listOf(0.5, 0.4), mcbrFrac = 0.45, hills2 = listOf(0.45),
             cars = 4, ridersPerCar = 4, layout = 0, seed = 3, note = "Family launch coaster."),
@@ -148,6 +158,20 @@ object CoasterLibrary {
             b2 = Block(1, "B2", "Lift Hill", BlockKind.LIFT, 45.0, s, null, null)
             to(8.0, h - 1.5)
             to(h * 1.1, 3.0)
+        } else if (spec.lsmLift) {
+            val v = spec.launchSpeed
+            val h = spec.height
+            to(25.0, 2.0) // holding brakes / launch position at s = 70, at the foot of the incline
+            to(5.0, 2.0)
+            to((h - 2) / 0.7, h) // LSM incline
+            launchEnd = s
+            to(6.0, h + 0.5)
+            topS = s
+            crestSensor = s + 2
+            headAtTop = h + 0.5 + v * v / (2 * G)
+            b2 = Block(1, "B2", "LSM Lift Hill", BlockKind.LAUNCH, 45.0, s, 70.0, 45.0)
+            to(6.0, h - 1.5)
+            to(h * 0.6, 3.0) // near-vertical first drop
         } else {
             val v = spec.launchSpeed
             to(25.0, 2.0) // holding brakes / launch position at s = 70

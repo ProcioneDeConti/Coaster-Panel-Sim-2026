@@ -57,6 +57,32 @@ class RideProfile(
     val name get() = spec.name
     val liftSpeed get() = spec.liftSpeed
     val launchSpeed get() = spec.launchSpeed
+    /** Swing launch speeds (forward, backward), or null for a single launch. */
+    val swing get() = spec.swing
+    val spikeHeight get() = spec.spikeHeight
+    /**
+     * Back end of the sliding switch track, where the spike line leaves. The switch table spans
+     * [spikeJunction, switchEnd], clear of a train standing at the launch position.
+     */
+    val spikeJunction get() = launchStart - trainLength - 11.0
+    val switchEnd get() = spikeJunction + 8.0
+
+    /** Sine of the climb angle [d] metres up the rear spike: a short curve into the vertical. */
+    fun spikeSin(d: Double): Double = (0.05 + d / 45.0).coerceAtMost(0.99)
+
+    /** Height above the launch track [d] metres up the rear spike. */
+    fun spikeHeightAt(d: Double): Double {
+        var x = 0.0; var h = 0.0
+        while (x < d) { val step = minOf(0.5, d - x); h += spikeSin(x) * step; x += step }
+        return h
+    }
+
+    /** Length of spike track before it runs out at [spikeHeight]. */
+    val spikeLength: Double by lazy {
+        var d = 0.0; var h = 0.0
+        while (h < spikeHeight) { h += spikeSin(d) * 0.5; d += 0.5 }
+        d
+    }
     val rows get() = spec.cars
     val ridersPerTrain get() = spec.cars * spec.ridersPerCar
     val trainLength get() = spec.cars * 2.0 + 2.0

@@ -68,6 +68,8 @@ class Drill(val scenario: Scenario, val plc: RidePlc) {
     private var initialForces = emptySet<String>()
     private val penalizedForces = mutableSetOf<String>()
     private var maintPenalized = false
+    /** Seconds the key has sat in MAINT; turning OFF→AUTO passes through it, so only a dwell counts. */
+    private var maintDwell = 0.0
     private var prevReset = false
     private var prevStart = false
     private var prevLaunch = plc.launchState
@@ -144,7 +146,8 @@ class Drill(val scenario: Scenario, val plc: RidePlc) {
         for (tag in plc.forces.all.keys) if (tag !in initialForces && penalizedForces.add(tag)) {
             penalize(20, "Unsafe override: force installed on $tag")
         }
-        if (i.mode == KeyMode.MAINT && !maintPenalized) {
+        maintDwell = if (i.mode == KeyMode.MAINT) maintDwell + dt else 0.0
+        if (maintDwell >= MAINT_GRACE && !maintPenalized) {
             maintPenalized = true
             penalize(10, "Maintenance mode used – interlocks bypassed")
         }
@@ -197,6 +200,10 @@ class Drill(val scenario: Scenario, val plc: RidePlc) {
     }
 
     fun result() = DrillResult(scenario.title, score, grade, t)
+
+    companion object {
+        const val MAINT_GRACE = 2.0
+    }
 }
 
 /** Drives the console headlessly to put a ride into a known state before a drill. */

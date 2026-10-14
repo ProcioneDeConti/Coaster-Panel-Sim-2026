@@ -39,7 +39,7 @@ import com.abemu.coaster.sim.ProfileType
 import com.abemu.coaster.sim.RidePlc
 import kotlin.math.abs
 
-private val trainColors = listOf(Color(0xFF1565C0), Color(0xFF8E24AA), Color(0xFF00897B), Color(0xFFEF6C00))
+internal val trainColors = listOf(Color(0xFF1565C0), Color(0xFF8E24AA), Color(0xFF00897B), Color(0xFFEF6C00))
 
 @Composable
 fun OverviewPage(vm: SimViewModel) {
@@ -119,7 +119,7 @@ fun TrackDiagram(plc: RidePlc, modifier: Modifier = Modifier, ghost: RideProfile
         val top = 34f
         val bottom = size.height - 46f
         val w = size.width - padL - padR
-        val maxH = profile.maxHeight + 6
+        val maxH = maxOf(profile.maxHeight, profile.spikeHeight) + 6
         fun x(s: Double) = padL + (s / profile.length * w).toFloat()
         fun y(s: Double) = (bottom - profile.height(s) / maxH * (bottom - top)).toFloat()
         fun pt(s: Double) = Offset(x(s), y(s))
@@ -183,6 +183,15 @@ fun TrackDiagram(plc: RidePlc, modifier: Modifier = Modifier, ghost: RideProfile
                 TextStyle(color = Color(0xFF40C4FF), fontSize = 9.sp))
         }
 
+        // Rear spike of a swing launch, drawn as a vertical tower at the junction
+        val base = profile.height(profile.spikeJunction)
+        fun spikeY(d: Double) = (bottom - (base + profile.spikeHeightAt(d)) / maxH * (bottom - top)).toFloat()
+        if (profile.spikeHeight > 0) {
+            val sx = x(profile.spikeJunction)
+            drawLine(Color(0xFF90A4AE), Offset(sx, y(profile.spikeJunction)), Offset(sx, spikeY(profile.spikeLength)), strokeWidth = 4f)
+            drawText(tm, "SPIKE", Offset(sx + 4f, spikeY(profile.spikeLength)), TextStyle(color = Color(0xFF90A4AE), fontSize = 9.sp))
+        }
+
         // Brakes
         profile.blocks.forEach { b ->
             val bs = b.brakeStart ?: return@forEach
@@ -215,6 +224,15 @@ fun TrackDiagram(plc: RidePlc, modifier: Modifier = Modifier, ghost: RideProfile
         // Trains
         plant.trains.forEach { t ->
             val c = trainColors[(t.id - 1) % trainColors.size]
+            if (t.spike > 0) {
+                val sx = x(profile.spikeJunction)
+                val lo = spikeY((t.spike - profile.trainLength).coerceAtLeast(0.0))
+                val hi = spikeY(t.spike)
+                drawLine(c, Offset(sx, lo), Offset(sx, hi), strokeWidth = 11f, cap = StrokeCap.Round)
+                drawText(tm, "T${t.id} ${"%.1f".format(abs(t.v))}", Offset(sx - 18f, hi - 22f),
+                    TextStyle(color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold, background = c))
+                return@forEach
+            }
             val tp = Path()
             var q = t.s - profile.trainLength
             tp.moveTo(x(profile.wrap(q)), y(q))

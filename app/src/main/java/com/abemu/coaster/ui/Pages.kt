@@ -30,6 +30,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -40,7 +42,10 @@ import com.abemu.coaster.sim.KeyMode
 import com.abemu.coaster.sim.ProfileType
 import com.abemu.coaster.sim.RideState
 import com.abemu.coaster.sim.TransferState
+import kotlin.math.PI
 import kotlin.math.abs
+import kotlin.math.cos
+import kotlin.math.sin
 
 // ================================================================ STATION
 
@@ -55,7 +60,7 @@ fun StationPage(vm: SimViewModel) {
         Column(Modifier.weight(1.25f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             HmiFrame("STATION – ${if (st != null) "TRAIN ${st.id} IN STATION" else "NO TRAIN"}") {
                 // Train plan view: rows, restraints, gates
-                Canvas(Modifier.fillMaxWidth().height(150.dp)) {
+                Canvas(Modifier.fillMaxWidth().height(180.dp)) {
                     val rows = plc.profile.rows
                     val margin = 20f
                     val carW = (size.width - margin * 2) / rows
@@ -71,21 +76,33 @@ fun StationPage(vm: SimViewModel) {
                                 Offset(x0 + 10, trainY + 12), Size(carW - 20, trainH - 24))
                         }
                     }
-                    // Gates (load side, bottom)
-                    val open = plant.gatePos
+                    // Gates (load side, bottom): each leaf swings 90° about its hinge toward the load platform,
+                    // with a position indicator whose bar is horizontal when closed and vertical when open.
+                    val open = plant.gatePos.toFloat().coerceIn(0f, 1f)
+                    val gateY = trainY + trainH + 18
+                    val gateColor = if (plant.gateClosedSensor) Color(0xFF2EBD59) else Color(0xFFFFB300)
+                    val ang = open * (PI / 2).toFloat()
                     for (r in 0 until rows) {
                         val x0 = margin + r * carW
-                        val gx = x0 + 6 + (carW - 12) * (open.toFloat() * 0.85f)
-                        drawRect(Color(0xFF424242), Offset(x0 + 4, trainY + trainH + 22), Size(carW - 8, 4f))
-                        drawRect(if (plant.gateClosedSensor) Color(0xFF2EBD59) else Color(0xFFFFB300),
-                            Offset(gx, trainY + trainH + 14), Size(carW * 0.16f, 18f))
+                        val hinge = Offset(x0 + 6, gateY)
+                        val len = carW * 0.55f
+                        // Fixed fence from the gate opening to the next row
+                        drawLine(Color(0xFF424242), Offset(x0 + 6 + len, gateY), Offset(x0 + carW - 2, gateY), 4f)
+                        drawLine(gateColor, hinge, hinge + Offset(len * cos(ang), len * sin(ang)), 6f)
+                        drawCircle(Color(0xFF424242), 4f, hinge)
+                        val c = Offset(x0 + carW * 0.8f, gateY + 28)
+                        val rad = minOf(10f, carW * 0.12f)
+                        drawCircle(Color(0xFF202020), rad + 2, c)
+                        drawCircle(gateColor, rad, c)
+                        val d = Offset(rad * 0.85f * cos(ang), rad * 0.85f * sin(ang))
+                        drawLine(Color.Black, c - d, c + d, 3f)
                     }
                     drawRect(Color(0xFF6D4C41), Offset(0f, 0f), Size(size.width, 18f)) // unload platform
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     HmiLabel("Unload platform ▲", 10.sp, color = Hmi.Dim)
                     HmiLabel("Row lock:  ■ locked  ■ unlocked", 10.sp, color = Hmi.Dim)
-                    HmiLabel("Load gates ▼", 10.sp, color = Hmi.Dim)
+                    HmiLabel("Load gates ▼  (— closed  | open)", 10.sp, color = Hmi.Dim)
                 }
             }
             HmiFrame("STATION CONTROLS (HMI)") {
@@ -97,7 +114,7 @@ fun StationPage(vm: SimViewModel) {
                 }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                DispatchTimer(plc, Modifier.weight(1.3f))
+                DispatchTimer(vm, Modifier.weight(1.3f))
                 HmiFrame("OPERATOR STANDS", Modifier.weight(1f)) {
                     StandStatus("Load stand", plc.inputs.loadStandEstop, plc.loadReady)
                     StandStatus("Unload stand", plc.inputs.unloadStandEstop, plc.unloadReady)
@@ -105,7 +122,9 @@ fun StationPage(vm: SimViewModel) {
                 }
             }
         }
-        HmiFrame("DISPATCH PERMISSIVES", Modifier.weight(1f).fillMaxHeight()) {
+        Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        if (plc.hasSwitch) SwitchTrackFrame(plc)
+        HmiFrame("DISPATCH PERMISSIVES", Modifier.fillMaxWidth().weight(1f)) {
             plc.permissives.forEach { p ->
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Indicator(p.ok, Hmi.Ok, Hmi.Bad, 14)
@@ -120,6 +139,77 @@ fun StationPage(vm: SimViewModel) {
             ) {
                 Text(if (plc.dispatchReady) "READY TO DISPATCH" else "NOT READY", color = Color.White, fontWeight = FontWeight.Bold)
             }
+        }
+        }
+    }
+}
+
+/** Top-down view of the swing-launch switch track: a sliding table carrying a curved piece (station line to
+ *  launch track) and a straight piece (spike line to launch track). */
+@Composable
+private fun SwitchTrackFrame(plc: com.abemu.coaster.sim.RidePlc) {
+    val p = plc.profile
+    val plant = plc.plant
+    val pos = plant.switchPos.toFloat()
+    val atStation = plc.switchStationLs
+    val atSpike = plc.switchSpikeLs
+    val title = when {
+        atStation -> "SWITCH TRACK – STATION LINE"
+        atSpike -> "SWITCH TRACK – SPIKE LINE"
+        else -> "SWITCH TRACK – MOVING"
+    }
+    HmiFrame(title) {
+        Canvas(Modifier.fillMaxWidth().height(120.dp)) {
+            val yS = size.height * 0.22f
+            val yL = size.height * 0.55f
+            val gap = yL - yS
+            val xA = size.width * 0.36f
+            val xB = size.width * 0.62f
+            val rail = Color(0xFF5F6870)
+            // Fixed track: station and spike lines to the left, launch track to the right
+            drawLine(rail, Offset(0f, yS), Offset(xA, yS), 6f)
+            drawLine(rail, Offset(0f, yL), Offset(xA, yL), 6f)
+            drawLine(Color(0xFF1E88E5), Offset(xB, yL), Offset(size.width, yL), 6f)
+            // Table on its slide rails
+            val off = gap * pos
+            drawRect(Color(0xFF3A3F45), Offset(xA - 4, yS - 14), Size(xB - xA + 8, 2 * gap + 28), style = Stroke(1.5f))
+            drawRect(Color(0xFFB0B7BE), Offset(xA, yS - 10 - off), Size(xB - xA, gap + 20 + gap))
+            val good = Color(0xFF2EBD59)
+            val moving = Color(0xFFFFB300)
+            val curved = Path().apply {
+                moveTo(xA, yS - off)
+                cubicTo((xA + xB) / 2, yS - off, (xA + xB) / 2, yL - off, xB, yL - off)
+            }
+            drawPath(curved, if (atStation) good else if (atSpike) Color(0xFF7A8189) else moving, style = Stroke(6f))
+            drawLine(if (atSpike) good else if (atStation) Color(0xFF7A8189) else moving,
+                Offset(xA, yL + gap - off), Offset(xB, yL + gap - off), 6f)
+            // Trains (front marker + body), placed by where they are on the layout
+            val j = p.spikeJunction
+            val sx = { d: Double -> (xA - d / 40.0 * xA).toFloat().coerceAtLeast(4f) } // distance back from the table
+            plant.trains.forEach { t ->
+                val c = trainColors[(t.id - 1) % trainColors.size]
+                val pt = when {
+                    t.spike > 0 -> Offset(sx(t.spike), yL)
+                    p.inRange(t.s, j, p.switchEnd) -> {
+                        val f = (p.ahead(j, t.s) / (p.switchEnd - j)).toFloat()
+                        if (atSpike) Offset(xA + f * (xB - xA), yL) else Offset(xA + f * (xB - xA), yS + f * gap)
+                    }
+                    p.inRange(t.s, p.switchEnd, p.launchEnd) ->
+                        Offset((xB + p.ahead(p.switchEnd, t.s) / 40.0 * (size.width - xB)).toFloat().coerceAtMost(size.width - 4f), yL)
+                    p.inRange(t.s, j - 40, j) -> Offset(sx(p.ahead(t.s, j)), yS)
+                    else -> null
+                }
+                if (pt != null) {
+                    drawRect(c, pt - Offset(16f, 7f), Size(18f, 14f))
+                    drawCircle(Color.White, 3f, pt)
+                }
+            }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Indicator(atStation, Hmi.Ok, Hmi.Off); HmiLabel("STATION LS", 10.sp)
+            Indicator(atSpike, Hmi.Ok, Hmi.Off); HmiLabel("SPIKE LS", 10.sp)
+            Indicator(plc.switchCmd, Hmi.Info, Hmi.Off); HmiLabel("CMD SPIKE", 10.sp)
+            Indicator(plant.switchOccupied, Hmi.Warn, Hmi.Off); HmiLabel("TABLE OCCUPIED", 10.sp)
         }
     }
 }
@@ -388,6 +478,7 @@ fun SimPage(vm: SimViewModel, onOpenEditor: () -> Unit) {
                 } else {
                     FaultToggle("LSM drive fault", f.lsmFault) { f.lsmFault = it }
                     FaultToggle("Launch underspeed (causes rollback)", f.launchUnderspeed) { f.launchUnderspeed = it }
+                    if (plc.hasSwitch) FaultToggle("Switch track jammed", f.switchStuck) { f.switchStuck = it }
                 }
                 FaultToggle("Station gate stuck open", f.gateStuck) { f.gateStuck = it }
                 FaultToggle("Safety I/O module connection fault", f.safetyIoFault) { f.safetyIoFault = it }
@@ -452,7 +543,9 @@ private fun FaultToggle(label: String, on: Boolean, set: (Boolean) -> Unit) {
 
 
 @Composable
-private fun DispatchTimer(plc: com.abemu.coaster.sim.RidePlc, modifier: Modifier) {
+private fun DispatchTimer(vm: SimViewModel, modifier: Modifier) {
+    vm.frame.longValue
+    val plc = vm.plc
     HmiFrame("DISPATCH TIMER  (target ${plc.dispatchTarget.toInt()} s)", modifier) {
         val since = plc.sinceDispatch
         val target = plc.dispatchTarget

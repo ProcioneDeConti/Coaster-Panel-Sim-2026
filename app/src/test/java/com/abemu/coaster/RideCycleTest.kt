@@ -3,6 +3,7 @@
 import com.abemu.coaster.sim.CoasterLibrary
 import com.abemu.coaster.sim.CoasterSpec
 import com.abemu.coaster.sim.KeyMode
+import com.abemu.coaster.sim.LaunchState
 import com.abemu.coaster.sim.LayoutTag
 import com.abemu.coaster.sim.TagLayout
 import com.abemu.coaster.sim.Plant
@@ -165,7 +166,7 @@ class RideCycleTest {
         press(plc) { plc.inputs.unloadReady = it }
         plc.inputs.dispatchL = true; plc.inputs.dispatchR = true; step(plc, 0.2)
         plc.inputs.dispatchL = false; plc.inputs.dispatchR = false
-        step(plc, 60.0)
+        step(plc, 90.0) // a swing launch takes ~30 s before the final launch
         assertTrue("${spec.name} no rollback", plc.alarms.isActive("ROLLBACK"))
         assertEquals(RideState.STOPPED, plc.state)
         plc.plant.faults.launchUnderspeed = false
@@ -173,6 +174,67 @@ class RideCycleTest {
         step(plc, 120.0)
         val t = plc.plant.trains[0]
         assertTrue("${spec.name} train at ${t.s}", kotlin.math.abs(t.s - 70.0) < 1.0)
+    }
+
+    @Test fun swingLaunchUsesSpikeAndCrests() {
+        val plc = RidePlc(Plant(RideProfile.create(CoasterLibrary.byId("tt2")), 1))
+        val i = plc.inputs
+        i.mode = KeyMode.AUTO
+        press(plc) { i.powerOn = it }; press(plc) { i.rideStart = it }; step(plc, 7.0)
+        press(plc) { i.loadReady = it }; press(plc) { i.unloadReady = it }
+        i.dispatchL = true; i.dispatchR = true; step(plc, 0.2); i.dispatchL = false; i.dispatchR = false
+        var maxSpike = 0.0
+        var crested = false
+        var sawSpikeLine = false
+        repeat(4000) {
+            step(plc, dt)
+            if (plc.plant.switchSpikeLs) sawSpikeLine = true
+            val t = plc.plant.trains[0]
+            maxSpike = maxOf(maxSpike, t.spike)
+            if (plc.occ[2] == t.id) crested = true
+        }
+        assertTrue("spike climb $maxSpike", maxSpike > 50)
+        assertTrue("never crested the top hat", crested)
+        assertTrue(plc.alarms.active.map { it.code }.toString(), !plc.alarms.isActive("ROLLBACK"))
+        assertTrue("switch never reached the spike line", sawSpikeLine)
+        assertTrue("switch did not return to the station line", plc.plant.switchStationLs)
+    }
+
+    @Test fun jammedSwitchInhibitsSwingLaunch() {
+        val plc = RidePlc(Plant(RideProfile.create(CoasterLibrary.byId("tt2")), 1))
+        plc.plant.faults.switchStuck = true
+        val i = plc.inputs
+        i.mode = KeyMode.AUTO
+        press(plc) { i.powerOn = it }; press(plc) { i.rideStart = it }; step(plc, 7.0)
+        press(plc) { i.loadReady = it }; press(plc) { i.unloadReady = it }
+        i.dispatchL = true; i.dispatchR = true; step(plc, 0.2); i.dispatchL = false; i.dispatchR = false
+        step(plc, 60.0)
+        assertTrue("no switch alarm", plc.alarms.isActive("SW_POS"))
+        assertEquals(LaunchState.IDLE, plc.launchState)
+        assertEquals(0.0, plc.plant.trains[0].v, 0.01)
+    }
+
+    /** Dispatching with no load time, trains should not queue on the course brakes (only at the station). */
+    @Test fun fastDispatchDoesNotStackCourseBrakes() {
+        for (id in listOf("thunder", "magnum")) {
+            val p = RideProfile.create(CoasterLibrary.byId(id))
+            val plc = RidePlc(Plant(p, 3))
+            val i = plc.inputs
+            i.mode = KeyMode.AUTO; i.singleButtonDispatch = true
+            press(plc) { i.powerOn = it }; press(plc) { i.rideStart = it }; step(plc, 7.0)
+            var courseWait = 0.0
+            val mid = (1 until p.blocks.size).filter { p.blocks[it].kind == com.abemu.coaster.sim.BlockKind.BRAKE_RUN && it != p.transferBlock }
+            repeat(1200 * 5) {
+                if (plc.dispatchReady) { press(plc) { i.dispatchL = it } }
+                else if (plc.trainInStation && !plc.releaseLatch[0] && !plc.loadReady) {
+                    press(plc) { i.loadReady = it }; press(plc) { i.unloadReady = it }
+                }
+                step(plc, 0.2)
+                for (b in mid) if (plc.plant.trainAtStop(b)?.let { kotlin.math.abs(it.v) < 0.05 } == true) courseWait += 0.2
+            }
+            val perDispatch = courseWait / plc.dispatchCount
+            assertTrue("$id: ${"%.1f".format(perDispatch)} s per dispatch held on course brakes", perDispatch < 5.0)
+        }
     }
 
     @Test fun everyCoasterRunsCleanly() {
