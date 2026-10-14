@@ -18,14 +18,25 @@ lines = [
     '        val liftEnd: Double,',
     '        val liftTagged: Boolean,',
     '        val points: List<Triple<Double, Double, Double>>,',
+    '        /** Fraction where the switch track meets the launch line (rides with a rear spike), else -1. */',
+    '        val switchAt: Double = -1.0,',
+    '        /** Spike line from the switch back to the spike tower, (x, y) in the plan box. */',
+    '        val spike: List<Pair<Double, Double>> = emptyList(),',
     '    )', '',
     '    val byId: Map<String, Layout> = mapOf(',
 ]
-for rid, name, total, se, ls, le, tg, pl in out:
+for rid, name, total, se, ls, le, tg, pl, sw, sp in out:
     lines.append(f'        "{rid}" to Layout({round(total, 1)}, {round(se, 5)}, {round(ls, 5)}, {round(le, 5)}, {str(tg).lower()}, listOf( // {name}')
     row = [f'Triple({u}, {x}, {y})' for u, x, y in pl]
     for k in range(0, len(row), 4):
         lines.append('            ' + ', '.join(row[k:k + 4]) + ',')
-    lines.append('        )),')
+    if sp:
+        lines.append(f'        ), switchAt = {sw}, spike = listOf(')
+        row = [f'{x} to {y}' for x, y in sp]
+        for k in range(0, len(row), 6):
+            lines.append('            ' + ', '.join(row[k:k + 6]) + ',')
+        lines.append('        )),')
+    else:
+        lines.append('        )),')
 lines += ['    )', '}', '']
 open(outkt, 'w', encoding='utf-8').write(NL.join(lines))

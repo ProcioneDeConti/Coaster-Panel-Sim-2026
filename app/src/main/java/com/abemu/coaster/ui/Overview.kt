@@ -278,10 +278,10 @@ class PlanTransform(val profile: com.abemu.coaster.sim.RideProfile, width: Float
     private val ox = (width - 100f * scale) / 2
     private val oy = pad + 14f + (height - pad * 2 - 14f - 56f * scale) / 2
 
-    fun pt(s: Double): Offset {
-        val (x, y) = profile.planPoint(s)
-        return Offset(ox + x.toFloat() * scale, oy + y.toFloat() * scale)
-    }
+    fun pt(s: Double): Offset = planPt(profile.planPoint(s))
+
+    /** Canvas position of a point in the plan box. */
+    fun planPt(p: Pair<Double, Double>): Offset = Offset(ox + p.first.toFloat() * scale, oy + p.second.toFloat() * scale)
 
     /** Track path between two positions (forward, handling wrap). */
     fun seg(from: Double, to: Double): Path {
@@ -366,6 +366,27 @@ fun PlanDiagram(
         // Rails/centreline
         drawPath(seg(0.0, 0.0), Color(0xFF0F1A24), style = Stroke(1.5f))
 
+        // Swing launch: spike line behind the switch track, and the switch table itself
+        if (profile.planSpike.isNotEmpty()) {
+            val path = Path()
+            var d = 0.0
+            while (d <= profile.spikeLength) {
+                val p = xf.planPt(profile.spikePlanPoint(d))
+                if (d == 0.0) path.moveTo(p.x, p.y) else path.lineTo(p.x, p.y)
+                d += 2.0
+            }
+            val onSpike = plant.trains.any { it.spike > 0 || it.tailOnSpike }
+            drawPath(path, if (onSpike) Color(0xFFE53935) else Color(0xFF546E7A), style = Stroke(7f, cap = StrokeCap.Butt))
+            val tip = xf.planPt(profile.spikePlanPoint(profile.spikeLength))
+            drawCircle(Color(0xFF90A4AE), 6f, tip)
+            drawText(tm, "SPIKE", tip + Offset(8f, -6f), TextStyle(color = Color(0xFF90A4AE), fontSize = 9.sp))
+            val sw = plant.switchPos
+            drawPath(seg(profile.spikeJunction, profile.switchEnd), Color(0xFFAB47BC), style = Stroke(11f, cap = StrokeCap.Butt))
+            drawText(tm, "SWITCH " + when { sw < 0.01 -> "STN"; sw > 0.99 -> "SPIKE"; else -> "MOVING" },
+                pt(profile.switchEnd) + Offset(8f, 4f),
+                TextStyle(color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.Bold, background = Color(0xFF6A1B9A)))
+        }
+
         // Lift chain / LSM
         if (profile.type == ProfileType.LIFT) {
             val run = plant.chainSpeed > 0.1
@@ -409,9 +430,23 @@ fun PlanDiagram(
         // Trains
         plant.trains.forEach { t ->
             val c = trainColors[(t.id - 1) % trainColors.size]
-            drawPath(seg(t.s - profile.trainLength, t.s), c, style = Stroke(13f, cap = StrokeCap.Round))
-            drawCircle(Color.White, 4f, pt(t.s))
-            drawText(tm, "T${t.id} ${"%.1f".format(kotlin.math.abs(t.v))}", pt(t.s) + Offset(8f, -22f),
+            val head: Offset
+            if (t.spike > 0 || t.tailOnSpike) {
+                // Part (or all) of the train is behind the switch on the spike line.
+                val onCircuit = if (t.spike > 0) 0.0 else profile.ahead(profile.spikeJunction, t.s).coerceAtMost(profile.trainLength)
+                if (onCircuit > 0) drawPath(seg(profile.spikeJunction, t.s), c, style = Stroke(13f, cap = StrokeCap.Round))
+                val lo = t.spike
+                val hi = (t.spike + profile.trainLength - onCircuit).coerceAtMost(profile.spikeLength)
+                val a = xf.planPt(profile.spikePlanPoint(lo))
+                val b = xf.planPt(profile.spikePlanPoint(hi))
+                drawLine(c, a, b, 13f, StrokeCap.Round)
+                head = if (t.spike > 0) a else pt(t.s)
+            } else {
+                drawPath(seg(t.s - profile.trainLength, t.s), c, style = Stroke(13f, cap = StrokeCap.Round))
+                head = pt(t.s)
+            }
+            drawCircle(Color.White, 4f, head)
+            drawText(tm, "T${t.id} ${"%.1f".format(kotlin.math.abs(t.v))}", head + Offset(8f, -22f),
                 TextStyle(color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold, background = c))
         }
 

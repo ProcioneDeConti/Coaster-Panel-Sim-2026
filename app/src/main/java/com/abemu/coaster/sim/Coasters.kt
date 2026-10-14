@@ -90,7 +90,7 @@ object CoasterLibrary {
             hills1 = emptyList(), mcbrFrac = 0.25, hills2 = emptyList(), hasMcbr = false, unloadStation = true,
             cars = 5, ridersPerCar = 4, layout = 1, seed = 30, park = "Cedar Point",
             swing = 33.1 to 45.2, spikeHeight = 128.0,
-            note = "Triple swing launch: forward to 74 mph (falls back off the top hat), backward to 101 mph up the 128 m rear spike, then forward to 120 mph over the 125 m top hat. Blocks: load, launch / top hat, brake run, unload. The dual load platforms are modelled as separate unload and load positions."),
+            note = "Triple swing launch: forward to 74 mph (falls back off the top hat), backward to 101 mph up the 128 m rear spike, then forward to 120 mph over the 125 m top hat. One station track with unload and load positions; the final brake is the station wait. The load train crosses the switch track onto the launch line, the switch locks to the spike line, then it fires. Blocks: load, launch / top hat, final brake (wait), unload."),
         CoasterSpec("maverick", "Maverick", ProfileType.LAUNCH, 32.0, launchSpeed = 9.0, lsmLift = true,
             hills1 = listOf(0.5, 0.6), mcbrFrac = 0.4, hills2 = listOf(0.55, 0.45, 0.35),
             cars = 6, ridersPerCar = 2, layout = 2, seed = 21, park = "Cedar Point", tunnelLaunch = 31.3,
@@ -278,7 +278,11 @@ object CoasterLibrary {
             length = length,
             elevation = e,
             blocks = listOf(b1) + blocks,
-            plan = RealLayouts.byId[spec.id]?.let { realPlan(it, topS, finalEnd, length) }
+            plan = RealLayouts.byId[spec.id]?.let {
+                // Switch rides: unload and load share the station building; the junction matches RideProfile.spikeJunction.
+                val unloadStart = blocks.firstOrNull { b -> b.kind == BlockKind.UNLOAD }?.start ?: finalEnd
+                realPlan(it, topS, if (it.switchAt >= 0) unloadStart else finalEnd, b1.stopPos!!, 70.0 - (spec.cars * 2.0 + 2.0) - 11.0, length)
+            }
                 ?: plan(spec, topS, finalFlat, finalEnd),
             liftStart = if (spec.type == ProfileType.LIFT) 45.0 else 0.0,
             liftEnd = liftEnd,
@@ -296,11 +300,19 @@ object CoasterLibrary {
      * Map a real (OpenStreetMap) layout onto this track: the real station and lift line up with the
      * simulated station and lift, and the rest of the circuit is stretched to fit.
      */
-    private fun realPlan(real: RealLayouts.Layout, topS: Double, finalEnd: Double, length: Double): List<Triple<Double, Double, Double>> {
+    private fun realPlan(
+        real: RealLayouts.Layout, topS: Double, stationStart: Double, loadStop: Double, junction: Double, length: Double,
+    ): List<Triple<Double, Double, Double>> {
         val liftLen = (topS - 45.0) / real.osmLengthM
         val crest = if (real.liftTagged) real.liftEnd else minOf(real.liftEnd, real.liftStart + liftLen)
         // (real fraction -> simulated s) anchors; s runs past [length] and is wrapped afterwards.
-        val anchors = listOf(0.0 to finalEnd, real.liftStart to length + 45.0, crest to length + topS, 1.0 to finalEnd + length)
+        val anchors = if (real.switchAt >= 0) {
+            // Station building holds unload and load; the switch track sits between the load platform and the launch line.
+            listOf(0.0 to stationStart, real.stationEnd to length + loadStop + 2, real.switchAt to length + junction,
+                crest to length + topS, 1.0 to stationStart + length)
+        } else {
+            listOf(0.0 to stationStart, real.liftStart to length + 45.0, crest to length + topS, 1.0 to stationStart + length)
+        }
         fun map(u: Double): Double {
             for (k in 1 until anchors.size) {
                 val (u0, s0) = anchors[k - 1]

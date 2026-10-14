@@ -1,5 +1,7 @@
 package com.abemu.coaster.sim
 
+import kotlin.math.hypot
+
 enum class ProfileType(val label: String) { LIFT("Lift Hill"), LAUNCH("LSM Launch") }
 
 enum class BlockKind { STATION, LIFT, LAUNCH, BRAKE_RUN, UNLOAD }
@@ -66,6 +68,25 @@ class RideProfile(
      */
     val spikeJunction get() = launchStart - trainLength - 11.0
     val switchEnd get() = spikeJunction + 8.0
+
+    /** Plan-view spike line from the switch back to the spike tower (real layouts only). */
+    val planSpike: List<Pair<Double, Double>> get() = RealLayouts.byId[spec.id]?.spike.orEmpty()
+
+    /** Plan-view position [d] metres up the rear spike: along [planSpike], scaled so the tower top is [spikeLength]. */
+    fun spikePlanPoint(d: Double): Pair<Double, Double> {
+        val pts = listOf(planPoint(spikeJunction)) + planSpike.drop(1)
+        if (pts.size < 2) return pts[0]
+        val seg = pts.zipWithNext { a, b -> hypot(b.first - a.first, b.second - a.second) }
+        var want = (d / spikeLength).coerceIn(0.0, 1.0) * seg.sum()
+        for (i in seg.indices) {
+            if (want <= seg[i] || i == seg.lastIndex) {
+                val t = if (seg[i] > 0) (want / seg[i]).coerceIn(0.0, 1.0) else 0.0
+                return pts[i].first + (pts[i + 1].first - pts[i].first) * t to pts[i].second + (pts[i + 1].second - pts[i].second) * t
+            }
+            want -= seg[i]
+        }
+        return pts.last()
+    }
 
     /** Sine of the climb angle [d] metres up the rear spike: a short curve into the vertical. */
     fun spikeSin(d: Double): Double = (0.05 + d / 45.0).coerceAtMost(0.99)

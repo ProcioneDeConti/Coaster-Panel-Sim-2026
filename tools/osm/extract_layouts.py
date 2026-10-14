@@ -64,6 +64,9 @@ def densify(pts, step=4.0):
 
 rides = [('millennium', 'Millennium Force'), ('magnum', 'Magnum XL-200'), ('maverick', 'Maverick'), ('gemini', 'Gemini'),
          ('tt2', 'Top Thrill 2')]
+# Rides whose station siding joins the launch line through a sliding switch track that OSM does not map.
+# Their track is one open way: rear spike -> launch line -> course -> station (dead end beside the launch line).
+SWITCH_RIDES = {'tt2'}
 out = []
 for rid, name in rides:
     poly = stations[name]
@@ -72,10 +75,25 @@ for rid, name in rides:
         ps = [xy(n) for w in wids for n in ways[w][0]]
         return (sum(inside(p, poly) for p in ps), -min(math.dist(p, q) for p in ps for q in poly))
     wids = max((w for w in comps.values() if len(w) > 1 or len(ways[w[0]][0]) > 10), key=score)
-    loop = chain(wids)
-    if not forward(loop, wids): loop = loop[::-1]
-    # start the station run on the first pass of an out-and-back track
-    pts = densify([xy(n) for n in loop])
+    spike = []
+    if rid in SWITCH_RIDES:
+        # Split off the rear spike: the switch sits where the launch line passes the station's dead end. The circuit
+        # runs launch line -> course -> station, and the closing gap (station end -> launch line) is the switch track.
+        segs = [list(ways[w][0]) for w in wids]
+        line = segs.pop(0)
+        while segs:
+            sg = next(g for g in segs if g[0] == line[-1]); segs.remove(sg); line += sg[1:]
+        raw = [xy(n) for n in line]
+        dense = densify(raw)
+        dense = dense[:len(dense) - max(1, int(math.dist(raw[-1], raw[0]) // 4.0))] + [raw[-1]]  # drop the closing segment
+        end = dense[-1]
+        k = min(range(len(dense) * 2 // 5), key=lambda i: math.dist(dense[i], end))
+        spike = dense[:k + 1][::-1]
+        pts = dense[k:]
+    else:
+        loop = chain(wids)
+        if not forward(loop, wids): loop = loop[::-1]
+        pts = densify([xy(n) for n in loop])
     n = len(pts)
     ins = [inside(p, poly) for p in pts]
     if not any(ins):  # fall back to nearest point
@@ -91,6 +109,7 @@ for rid, name in rides:
     if st1 - st0 < 3: st0, st1 = st0 - 8, st0 + 8  # tiny overlap: assume ~60 m platform
     pts = pts[st0 % n:] + pts[:st0 % n]
     st_end = st1 - st0
+    switch_at = (n - st0 % n) % n if spike else -1  # index of the launch-line end of the switch track
     # lift: tagged lift_hill way end, else the straight run after the station
     lift_end = None
     lift_start = st_end
@@ -124,22 +143,26 @@ for rid, name in rides:
     best = None
     for deg in range(0, 360, 3):
         r = math.radians(deg)
-        rp = [(x * math.cos(r) - y * math.sin(r), x * math.sin(r) + y * math.cos(r)) for x, y in pts]
-        xs = [p[0] for p in rp]; ys = [p[1] for p in rp]
+        rot = lambda q: [(x * math.cos(r) - y * math.sin(r), x * math.sin(r) + y * math.cos(r)) for x, y in q]
+        rp = rot(pts); rs = rot(spike)
+        xs = [p[0] for p in rp + rs]; ys = [p[1] for p in rp + rs]
         sc = min(92 / (max(xs) - min(xs)), 50 / (max(ys) - min(ys)))
         # prefer the station along the bottom of the screen
         sy = sum(rp[i][1] for i in range(st_end)) / max(1, st_end)
         key = (round(sc, 1), sy)
-        if best is None or key > best[0]: best = (key, sc, rp, min(xs), min(ys), max(xs), max(ys))
-    _, sc, rp, x0, y0, x1, y1 = best
+        if best is None or key > best[0]: best = (key, sc, rp, min(xs), min(ys), max(xs), max(ys), rs)
+    _, sc, rp, x0, y0, x1, y1, rs = best
     ox = (100 - (x1 - x0) * sc) / 2; oy = (56 - (y1 - y0) * sc) / 2
     step = max(1, n // 160)
     sel = list(range(0, n, step))
-    for k in (st_end, lift_start, lift_end):
+    for k in (st_end, lift_start, lift_end) + ((switch_at,) if spike else ()):
         if k not in sel: sel.append(k)
     sel.sort()
     pl = [(round(cum[i] / total, 5), round(ox + (rp[i][0] - x0) * sc, 2), round(oy + (rp[i][1] - y0) * sc, 2)) for i in sel]
-    print(f'{rid}: {round(total)} m, station {round(cum[st_end])} m, lift {round(cum[lift_start])}-{round(cum[lift_end])} m tagged={tagged}, {len(pl)} pts')
-    out.append((rid, name, total, cum[st_end] / total, cum[lift_start] / total, cum[lift_end] / total, tagged, pl))
+    sp = [(round(ox + (x - x0) * sc, 2), round(oy + (y - y0) * sc, 2)) for x, y in rs[::4] + rs[-1:]] if spike else []
+    sw = round(cum[switch_at] / total, 5) if spike else -1.0
+    print(f'{rid}: {round(total)} m, station {round(cum[st_end])} m, lift {round(cum[lift_start])}-{round(cum[lift_end])} m tagged={tagged}, {len(pl)} pts'
+          + (f', switch at {round(cum[switch_at])} m, spike line {round(sum(math.dist(a, b) for a, b in zip(spike, spike[1:])))} m' if spike else ''))
+    out.append((rid, name, total, cum[st_end] / total, cum[lift_start] / total, cum[lift_end] / total, tagged, pl, sw, sp))
 
 exec(open(sys.argv[0].replace('extract_layouts.py', 'writer.py')).read())
