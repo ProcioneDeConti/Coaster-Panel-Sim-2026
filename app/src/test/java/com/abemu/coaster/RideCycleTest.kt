@@ -55,6 +55,32 @@ class RideCycleTest {
         assertTrue("only $applied rides took a mid-course tag", applied >= 4)
     }
 
+    @Test fun trimAndSensorTags() {
+        val base = RideProfile.create(CoasterLibrary.byId("magnum"))
+        val c0 = base.blocks[1].end; val c1 = base.blocks[base.transferBlock].brakeStart!!
+        val a = c0 + 0.15 * (c1 - c0)
+        val px = c0 + 0.6 * (c1 - c0)
+        val r = TagLayout.apply(base, listOf(
+            LayoutTag("TRIM_BRAKE", a / base.length, (a + 30) / base.length, "Trim 1"),
+            LayoutTag("SENSOR", px / base.length, px / base.length, "MID"),
+        ))
+        assertTrue(r.report.toString(), r.rejected.isEmpty())
+        val trim = r.profile.trims.single()
+        var seen = false
+        var maxInTrimEnd = 0.0
+        val plc = runCycles(r.profile, 2, 4, NOOP)
+        // Drive one more lap watching the trim and sensor.
+        repeat(6000) {
+            plc.scan(dt); plc.plant.step(dt)
+            if (plc.plant.proxSensor(0)) seen = true
+            plc.plant.trains.filter { r.profile.inRange(it.s, trim.end - 3, trim.end) }.forEach { maxInTrimEnd = maxOf(maxInTrimEnd, it.v) }
+        }
+        // The trim must actually bind (natural speed there is well above its cap).
+        assertTrue("trim never binds", trim.maxSpeed < kotlin.math.sqrt(2 * 9.81 * (base.maxHeight - base.height(trim.end))) - 3)
+        assertTrue("sensor never saw a train", seen)
+        assertTrue("trim exit %.1f > %.1f".format(maxInTrimEnd, trim.maxSpeed), maxInTrimEnd <= trim.maxSpeed + 0.5)
+    }
+
     @Test fun tagsOutsideCourseKeepGenerated() {
         val base = RideProfile.create(CoasterLibrary.byId("millennium"))
         val r = TagLayout.apply(base, listOf(LayoutTag("BLOCK_BRAKE", 10 / base.length, 40 / base.length)))

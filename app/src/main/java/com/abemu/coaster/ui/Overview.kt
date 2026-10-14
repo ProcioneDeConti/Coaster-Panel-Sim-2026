@@ -33,6 +33,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.abemu.coaster.SimViewModel
 import com.abemu.coaster.sim.BlockKind
+import com.abemu.coaster.sim.RideProfile
 import com.abemu.coaster.sim.LaunchState
 import com.abemu.coaster.sim.ProfileType
 import com.abemu.coaster.sim.RidePlc
@@ -101,7 +102,7 @@ fun OverviewPage(vm: SimViewModel) {
 
 /** Side-elevation track diagram with live block occupancy, brakes, sensors and trains. */
 @Composable
-fun TrackDiagram(plc: RidePlc, modifier: Modifier = Modifier) {
+fun TrackDiagram(plc: RidePlc, modifier: Modifier = Modifier, ghost: RideProfile? = null) {
     val tm = rememberTextMeasurer()
     val profile = plc.profile
     val plant = plc.plant
@@ -145,6 +146,14 @@ fun TrackDiagram(plc: RidePlc, modifier: Modifier = Modifier) {
         var s = 0.0
         path.moveTo(x(0.0), y(0.0))
         while (s <= profile.length) { path.lineTo(x(s), y(s)); s += 2.0 }
+        // Generated track before tags reshaped it (editor preview)
+        if (ghost != null) {
+            val gp = Path()
+            var g = 0.0
+            gp.moveTo(x(0.0), (bottom - ghost.height(0.0) / maxH * (bottom - top)).toFloat())
+            while (g <= profile.length) { gp.lineTo(x(g), (bottom - ghost.height(g) / maxH * (bottom - top)).toFloat()); g += 2.0 }
+            drawPath(gp, Color(0xFF607D8B), style = Stroke(2f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(5f, 5f))))
+        }
         drawPath(path, Color(0xFF90A4AE), style = Stroke(4f, cap = StrokeCap.Round))
 
         // Lift chain / LSM section
@@ -186,6 +195,15 @@ fun TrackDiagram(plc: RidePlc, modifier: Modifier = Modifier) {
         profile.blocks.forEach { b ->
             val on = plant.entrySensor(b.index)
             drawCircle(if (on) Color(0xFFFFEB3B) else Color(0xFF455A64), 5f, pt(b.start) + Offset(0f, 10f))
+        }
+
+        // Trim brakes and extra prox sensors (from editor tags)
+        profile.trims.forEach { tr ->
+            var q = tr.start
+            while (q < tr.end) { drawLine(Color(0xFFFF9100), pt(q) + Offset(0f, -7f), pt(q + 2) + Offset(0f, -7f), strokeWidth = 4f); q += 2.0 }
+        }
+        profile.sensors.forEachIndexed { i, s ->
+            drawRect(if (plant.proxSensor(i)) Color(0xFFFFEB3B) else Color(0xFF455A64), pt(s.s) + Offset(-4f, 6f), Size(8f, 8f))
         }
 
         // Trains
@@ -354,6 +372,14 @@ fun PlanDiagram(
             val on = plant.entrySensor(blk.index)
             drawCircle(Color.Black, 6.5f, pt(blk.start))
             drawCircle(if (on) Color(0xFFFFEB3B) else Color(0xFF546E7A), 5f, pt(blk.start))
+        }
+
+        // Trim brakes and extra prox sensors (from editor tags)
+        profile.trims.forEach { tr -> drawPath(seg(tr.start, tr.end), Color(0xFFFF9100), style = Stroke(8f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(2f, 3f)))) }
+        profile.sensors.forEachIndexed { i, s ->
+            val c = pt(s.s)
+            drawRect(Color.Black, c - Offset(5.5f, 5.5f), Size(11f, 11f))
+            drawRect(if (plant.proxSensor(i)) Color(0xFFFFEB3B) else Color(0xFF546E7A), c - Offset(4f, 4f), Size(8f, 8f))
         }
 
         // Trains

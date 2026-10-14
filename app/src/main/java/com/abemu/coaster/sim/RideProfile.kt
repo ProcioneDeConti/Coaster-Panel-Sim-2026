@@ -25,6 +25,12 @@ data class Block(
     val exitLaunch: Double = 0.0,
 )
 
+/** Trim brake: fins that cap the train's speed through [start, end] at [maxSpeed] (m/s). */
+data class Trim(val name: String, val start: Double, val end: Double, val maxSpeed: Double)
+
+/** Extra proximity sensor (field input) at track position [s]. */
+data class Prox(val name: String, val s: Double)
+
 /** A fully built ride: track geometry, block layout and train/drive parameters. */
 class RideProfile(
     val spec: CoasterSpec,
@@ -44,6 +50,8 @@ class RideProfile(
     val rollbackSpeed: Double = 0.0,
     /** Transfer block set by an editor tag, else the last brake run. */
     private val transferOverride: Int? = null,
+    val trims: List<Trim> = emptyList(),
+    val sensors: List<Prox> = emptyList(),
 ) {
     val type get() = spec.type
     val name get() = spec.name
@@ -114,9 +122,12 @@ class RideProfile(
     }
 
     /** Same track with a different block layout (used by editor tags). */
-    fun withBlocks(blocks: List<Block>, transfer: Int? = null, elevation: List<Pair<Double, Double>>? = null) = RideProfile(
+    fun withBlocks(
+        blocks: List<Block>, transfer: Int? = null, elevation: List<Pair<Double, Double>>? = null,
+        trims: List<Trim> = emptyList(), sensors: List<Prox> = emptyList(),
+    ) = RideProfile(
         spec, length, elevation ?: this.elevation, blocks, plan, liftStart, liftEnd, liftCrestSensor,
-        launchStart, launchEnd, crestSensor, rollbackSpeed, transfer,
+        launchStart, launchEnd, crestSensor, rollbackSpeed, transfer, trims, sensors,
     )
 
     companion object {

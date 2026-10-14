@@ -8,8 +8,8 @@ import kotlin.math.abs
  */
 data class LayoutTag(val kind: String, val fStart: Double, val fEnd: Double, val name: String = "")
 
-/** Result of applying tags: the rebuilt profile plus one line per tag saying what happened. */
-class TaggedLayout(val profile: RideProfile, val report: List<String>)
+/** Result of applying tags: the rebuilt profile, one line per tag, and the tags that didn't apply. */
+class TaggedLayout(val profile: RideProfile, val report: List<String>, val rejected: Set<LayoutTag> = emptySet())
 
 /**
  * Re-zones a generated ride from editor tags. Track geometry is kept as generated; tags move the
@@ -26,6 +26,7 @@ object TagLayout {
         if (tags.isEmpty()) return TaggedLayout(base, emptyList())
         val p = base
         val report = mutableListOf<String>()
+        val rejected = mutableSetOf<LayoutTag>()
         fun s(f: Double) = p.wrap(f * p.length)
         val station = p.blocks[0]
         val drive = p.blocks[1]
@@ -36,6 +37,7 @@ object TagLayout {
         val courseEnd = final.brakeStart!!
 
         fun label(t: LayoutTag) = t.kind.lowercase().replace('_', ' ') + if (t.name.isNotEmpty()) " \"${t.name}\"" else ""
+        fun say(t: LayoutTag, msg: String, ok: Boolean = false) { report += "${label(t)}: $msg"; if (!ok) rejected += t }
         // A second (tunnel) launch is an energy source the course depends on: tags may only go before it.
         val tunnel = p.blocks.subList(2, finalIdx).firstOrNull { it.exitLaunch > 0 }
         val limit = tunnel?.brakeStart ?: courseEnd
@@ -54,15 +56,15 @@ object TagLayout {
             when {
                 // A tag over a kept brake (final or tunnel) just renames it.
                 p.blocks.subList(finalIdx, p.blocks.size).plus(listOfNotNull(tunnel)).any { p.inRange(a + len / 2, it.start, it.end) } -> null
-                !inCourse(a, b) -> { report += "${label(t)}: skipped, outside the free-running course"; null }
-                len < p.trainLength + 10 -> { report += "${label(t)}: rejected, %.0f m is shorter than a train + 10 m".format(len); null }
+                !inCourse(a, b) -> { say(t, "skipped, outside the free-running course"); null }
+                len < p.trainLength + 10 -> { say(t, "rejected, %.0f m is shorter than a train + 10 m".format(len)); null }
                 else -> Cand(t, a, b)
             }
         }.sortedBy { it.start }
             .fold(mutableListOf<Cand>()) { acc, c ->
                 val prev = acc.lastOrNull()
                 if (prev != null && c.start < prev.end + p.trainLength) {
-                    report += "${label(c.tag)}: rejected, overlaps or crowds the previous brake"
+                    say(c.tag, "rejected, overlaps or crowds the previous brake")
                 } else acc += c
                 acc
             }
@@ -80,8 +82,8 @@ object TagLayout {
             val brakeH = minOf((idx(c.start)..idx(c.end)).maxOf { h[it] }, reach - 3)
             val stop = c.end - 5
             val rollOn = brakeH + RESTART_HEAD - LOSS * (limit - stop) - 1
-            if (brakeH < 1.0) { report += "${label(c.tag)}: rejected, a train couldn't reach it"; continue }
-            if (rollOn < target) { report += "${label(c.tag)}: rejected, too far from the next brake for a stopped train to roll on"; continue }
+            if (brakeH < 1.0) { say(c.tag, "rejected, a train couldn't reach it"); continue }
+            if (rollOn < target) { say(c.tag, "rejected, too far from the next brake for a stopped train to roll on"); continue }
             // Ramp in over a few metres, level through the brake.
             val ramp = maxOf(10.0, abs(h[idx(c.start)] - brakeH) * 2)
             val r0 = idx(maxOf(srcS + 2, c.start - ramp)); val r1 = idx(c.start)
@@ -105,7 +107,7 @@ object TagLayout {
             for (c in accepted) {
                 blocks += Block(blocks.size, "B${blocks.size + 1}", c.tag.name.ifEmpty { "Block Brake" },
                     BlockKind.BRAKE_RUN, blocks.last().end, c.end, c.end - 5, c.start)
-                report += "${label(c.tag)}: applied as ${blocks.last().tag}"
+                say(c.tag, "applied as ${blocks.last().tag}", ok = true)
             }
             tunnel?.let { blocks += it.copy(index = blocks.size, tag = "B${blocks.size + 1}", start = blocks.last().end) }
             val dropped = p.blocks.subList(2, finalIdx).filter { it !== tunnel }
@@ -117,31 +119,54 @@ object TagLayout {
         for (t in tags.filter { it.kind == "BLOCK_BOUNDARY" }) {
             val x = s(t.fStart)
             val i = (2 until blocks.size - 1).firstOrNull { val b = blocks[it]; b.stopPos != null && p.inRange(x, b.stopPos + 3, blocks[it + 1].brakeStart ?: blocks[it + 1].end) }
-            if (i == null) { report += "${label(t)}: skipped, must lie between a stop point and the next brake"; continue }
+            if (i == null) { say(t, "skipped, must lie between a stop point and the next brake"); continue }
             blocks[i] = blocks[i].copy(end = x)
             blocks[i + 1] = blocks[i + 1].copy(start = x)
-            report += "${label(t)}: ${blocks[i].tag}/${blocks[i + 1].tag} boundary moved"
+            say(t, "${blocks[i].tag}/${blocks[i + 1].tag} boundary moved", ok = true)
         }
 
         // ---- Renames and transfer ----
-        fun rename(i: Int, t: LayoutTag) { if (t.name.isNotEmpty()) { blocks[i] = blocks[i].copy(name = t.name); report += "${label(t)}: renamed ${blocks[i].tag}" } }
+        fun rename(i: Int, t: LayoutTag) { if (t.name.isNotEmpty()) { blocks[i] = blocks[i].copy(name = t.name); say(t, "renamed ${blocks[i].tag}", ok = true) } }
         var transfer: Int? = null
         for (t in tags) {
             val mid = p.wrap(s(t.fStart) + p.ahead(s(t.fStart), s(t.fEnd)) / 2)
             val i = blocks.indexOfFirst { p.inRange(mid, it.start, it.end) }
             when (t.kind) {
-                "LOAD_STATION" -> if (blocks[i].kind == BlockKind.STATION) rename(i, t) else report += "${label(t)}: not on the generated station"
-                "UNLOAD_STATION" -> if (blocks[i].kind == BlockKind.UNLOAD) rename(i, t) else report += "${label(t)}: this ride has no unload station there"
-                "LIFT", "LAUNCH" -> if (i == 1) rename(i, t) else report += "${label(t)}: not on the generated ${if (p.type == ProfileType.LIFT) "lift" else "launch"}"
-                "TRANSFER" -> if (blocks[i].kind == BlockKind.BRAKE_RUN) { transfer = i; report += "${label(t)}: transfer on ${blocks[i].tag}" }
-                    else report += "${label(t)}: transfer must be on a brake run"
+                "LOAD_STATION" -> if (blocks[i].kind == BlockKind.STATION) rename(i, t) else say(t, "not on the generated station")
+                "UNLOAD_STATION" -> if (blocks[i].kind == BlockKind.UNLOAD) rename(i, t) else say(t, "this ride has no unload station there")
+                "LIFT", "LAUNCH" -> if (i == 1) rename(i, t) else say(t, "not on the generated ${if (p.type == ProfileType.LIFT) "lift" else "launch"}")
+                "TRANSFER" -> if (blocks[i].kind == BlockKind.BRAKE_RUN) { transfer = i; say(t, "transfer on ${blocks[i].tag}", ok = true) }
+                    else say(t, "transfer must be on a brake run")
                 "BLOCK_BRAKE", "TUNNEL" -> if (blocks[i].kind == BlockKind.BRAKE_RUN &&
                     (blocks[i].exitLaunch > 0 || i == blocks.indexOfLast { it.kind == BlockKind.BRAKE_RUN })) rename(i, t)
-                "TRIM_BRAKE", "SENSOR" -> report += "${label(t)}: informational only (not simulated yet)"
-            }
+                            }
         }
+        // ---- Trim brakes: cap speed, but never below what clears the track up to the next brake ----
+        val trims = mutableListOf<Trim>()
+        fun heightAt(s: Double) = h[idx(p.wrap(s))]
+        for (t in tags.filter { it.kind == "TRIM_BRAKE" }) {
+            val a = s(t.fStart); val b = s(t.fEnd)
+            if (!inCourse(a, b) && !(tunnel != null && b <= courseEnd && a > tunnel.end && a < b)) { say(t, "skipped, outside the free-running course"); continue }
+            if (blocks.any { blk -> blk.brakeStart != null && (p.inRange(a, blk.brakeStart, blk.end) || p.inRange(b, blk.brakeStart, blk.end)) }) {
+                say(t, "rejected, overlaps a block brake"); continue
+            }
+            val next = blocks.mapNotNull { it.brakeStart }.filter { it > b }.minOrNull() ?: courseEnd
+            var need = 0.0
+            var x = b
+            while (x < next) { need = maxOf(need, heightAt(x) + LOSS * (x - b) + 1.5); x += STEP }
+            val vMin = kotlin.math.sqrt(2 * G * maxOf(0.0, need - heightAt(b)))
+            val vMax = maxOf(vMin, 8.0)
+            trims += Trim(t.name.ifEmpty { "Trim ${trims.size + 1}" }, a, b, vMax)
+            say(t, "trims to %.1f m/s".format(vMax), ok = true)
+        }
+
+        // ---- Prox sensors: extra field inputs at the tagged points ----
+        val sensors = tags.filter { it.kind == "SENSOR" }.mapIndexed { i, t ->
+            Prox(t.name.ifEmpty { "PX${i + 1}" }, s(t.fStart)).also { say(t, "field input ${it.name}", ok = true) }
+        }
+
         val elevation = if (accepted.isEmpty()) null else simplify(h, p.length)
-        return TaggedLayout(p.withBlocks(blocks, transfer, elevation), report)
+        return TaggedLayout(p.withBlocks(blocks, transfer, elevation, trims, sensors), report, rejected)
     }
 
     /** Grid heights to (s, h) points, dropping points that lie on a straight line. */

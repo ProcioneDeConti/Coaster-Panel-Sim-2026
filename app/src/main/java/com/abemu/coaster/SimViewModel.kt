@@ -42,6 +42,8 @@ class SimViewModel : ViewModel() {
     var useTags by mutableStateOf(true)
     /** What the last build did with each tag. */
     var tagReport by mutableStateOf(emptyList<String>()); private set
+    /** Tags the last build couldn't use. */
+    var tagRejected by mutableStateOf(emptySet<LayoutTag>()); private set
     var coasterId by mutableStateOf(CoasterLibrary.default(ProfileType.LIFT).id); private set
     var trainCount by mutableIntStateOf(3); private set
     var plc by mutableStateOf(build(coasterId, 3)); private set
@@ -78,9 +80,10 @@ class SimViewModel : ViewModel() {
 
     private fun profile(id: String): RideProfile {
         val base = RideProfile.create(CoasterLibrary.byId(id))
-        if (!useTags) { tagReport = emptyList(); return base }
+        if (!useTags) { tagReport = emptyList(); tagRejected = emptySet(); return base }
         val tagged = TagLayout.apply(base, tagLoader(id))
         tagReport = tagged.report
+        tagRejected = tagged.rejected
         return tagged.profile
     }
 

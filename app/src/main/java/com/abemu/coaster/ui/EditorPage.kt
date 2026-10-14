@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -43,6 +44,8 @@ import com.abemu.coaster.SimViewModel
 import com.abemu.coaster.dev.TagStore
 import com.abemu.coaster.dev.TagType
 import com.abemu.coaster.dev.TrackTag
+import com.abemu.coaster.sim.CoasterLibrary
+import com.abemu.coaster.sim.RideProfile
 
 /**
  * Dev tool: tap the plan view to mark features (stations, lifts, brakes, block boundaries...) on
@@ -62,13 +65,16 @@ fun EditorPage(vm: SimViewModel, onClose: () -> Unit) {
     var height by remember { mutableStateOf("") }
     var msg by remember { mutableStateOf("Tap the track to place the start point.") }
 
+    val base = remember(vm.coasterId) { RideProfile.create(CoasterLibrary.byId(vm.coasterId)) }
+
     fun persist() = TagStore.save(ctx, vm.coasterId, profile, tags)
 
     Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         var zoom by remember { mutableFloatStateOf(1f) }
         var pan by remember { mutableStateOf(Offset.Zero) }
+        Column(Modifier.weight(1.55f).fillMaxHeight()) {
         Box(
-            Modifier.weight(1.55f).fillMaxHeight().clipToBounds().pointerInput(Unit) {
+            Modifier.weight(1f).fillMaxWidth().clipToBounds().pointerInput(Unit) {
                 // Pinch to zoom, drag to pan. Taps pass through to the diagram for selection.
                 detectTransformGestures { _, p, z, _ ->
                     zoom = (zoom * z).coerceIn(1f, 10f)
@@ -91,6 +97,12 @@ fun EditorPage(vm: SimViewModel, onClose: () -> Unit) {
                 },
                 overlay = { xf ->
                     tags.forEach { t ->
+                        if (t.toLayout() in vm.tagRejected) {
+                            // Rejected by the last build: red cross at the tag.
+                            val c = xf.pt(if (t.type.point) t.sStart else profile.wrap(t.sStart + profile.ahead(t.sStart, t.sEnd) / 2))
+                            drawLine(Color(0xFFFF1744), c + Offset(-11f, -11f), c + Offset(11f, 11f), strokeWidth = 5f)
+                            drawLine(Color(0xFFFF1744), c + Offset(-11f, 11f), c + Offset(11f, -11f), strokeWidth = 5f)
+                        }
                         if (t.type.point) {
                             val p = xf.pt(t.sStart)
                             drawCircle(Color.Black, 9f, p)
@@ -116,6 +128,9 @@ fun EditorPage(vm: SimViewModel, onClose: () -> Unit) {
             }
             HmiLabel("Pinch / +− to zoom · drag to pan · tap track to select", 10.sp, color = Color(0xFF90A4AE),
                 modifier = Modifier.align(Alignment.BottomStart).padding(8.dp))
+        }
+            HmiLabel("ELEVATION  ━ as built   ┅ generated (before tags)", 10.sp, color = Color(0xFF90A4AE))
+            TrackDiagram(plc, Modifier.fillMaxWidth().height(130.dp), ghost = base.takeIf { vm.useTags && vm.tagReport.isNotEmpty() })
         }
         Column(
             Modifier.weight(1f).fillMaxHeight().verticalScroll(rememberScrollState()),
@@ -176,6 +191,7 @@ fun EditorPage(vm: SimViewModel, onClose: () -> Unit) {
                 tags.forEachIndexed { i, t ->
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Box(Modifier.size(12.dp).background(t.type.color).border(1.dp, Color.Black))
+                        if (t.toLayout() in vm.tagRejected) HmiLabel(" ✕", 11.sp, color = Hmi.Bad)
                         HmiLabel(
                             "  ${t.type.label}${if (t.name.isNotEmpty()) " – ${t.name}" else ""}  " +
                                 if (t.type.point) "@ %.0f m".format(t.sStart) else "%.0f–%.0f m (%.0f m)".format(t.sStart, t.sEnd, t.lengthM(profile)) +

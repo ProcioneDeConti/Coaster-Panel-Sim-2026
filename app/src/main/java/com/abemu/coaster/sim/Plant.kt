@@ -79,6 +79,8 @@ class Plant(val profile: RideProfile, activeTrains: Int, totalTrains: Int = 3) {
     /** True if any train body covers track position [pos]. */
     fun bodyAt(pos: Double): Boolean = trains.any { profile.ahead(pos, it.s) <= profile.trainLength }
 
+    fun proxSensor(i: Int): Boolean = bodyAt(profile.sensors[i].s)
+
     fun entrySensor(block: Int): Boolean {
         if (block in faults.sensorStuckOn) return true
         if (block in faults.sensorStuckOff) return false
@@ -213,6 +215,10 @@ class Plant(val profile: RideProfile, activeTrains: Int, totalTrains: Int = 3) {
             }
 
             else -> freeRoll()
+        }
+        // Trim brake fins (passive, always active).
+        p.trims.firstOrNull { p.inRange(t.s, it.start, it.end) }?.let { tr ->
+            if (t.v > tr.maxSpeed) t.v = max(tr.maxSpeed, t.v - 5.0 * dt)
         }
 
         val before = t.s

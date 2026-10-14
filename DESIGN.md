@@ -74,9 +74,11 @@ Tags feed the generator (`sim/TagLayout.kt`) when the ride is built (APPLY TO RI
   stop off the drive tires still makes the final brake. Tags that can't work are rejected.
 * Block boundaries move a block's end between its stop point and the next brake.
 * Transfer tags move the transfer table to that brake run; station/lift/launch tags rename blocks.
-* A generated tunnel launch is kept, and tags may only go before it. Trim brakes and sensors are
-  informational for now.
-The editor lists what happened to each tag; TAGS: USED/IGNORED switches back to the pure generator.
+* A generated tunnel launch is kept, and brake tags may only go before it.
+* Trim brakes cap speed (passive fins), but never below what still clears the track to the next
+  brake. Sensor tags become extra field inputs (`<NAME>_PX` on the I/O page).
+The editor lists what happened to each tag, marks rejected ones with a red cross, and shows the
+built elevation over the generated one. TAGS: USED/IGNORED switches back to the pure generator.
 
 ## Sound
 

@@ -352,6 +352,7 @@ fun IoPage(vm: SimViewModel) {
             add("LSM_DRIVE_READY" to !p.faults.lsmFault)
         }
         for (r in 0 until plc.profile.rows) add("ROW${r + 1}_LOCKED_LS" to p.rowLockSensor(r))
+        plc.profile.sensors.forEachIndexed { n, s -> add("${s.name.uppercase().replace(' ', '_')}_PX" to p.proxSensor(n)) }
     }.mapIndexed { n, (t, v) -> Io("Local:${2 + n / 16}:I.Data.${n % 16}", t, v) }
     val outputs = buildList {
         bl.filter { it.stopPos != null }.forEach { add("${it.tag}_BRK_SOL" to p.brakes[it.index].cmdOpen) }

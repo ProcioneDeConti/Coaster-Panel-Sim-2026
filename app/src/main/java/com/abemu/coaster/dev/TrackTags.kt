@@ -39,6 +39,9 @@ data class TrackTag(
 ) {
     fun lengthM(profile: RideProfile) = profile.ahead(sStart, sEnd)
 
+    /** This tag in the generator's form. */
+    fun toLayout() = LayoutTag(type.name, fStart, fEnd, name)
+
     companion object {
         fun create(profile: RideProfile, type: TagType, a: Double, b: Double, name: String, height: Double?) =
             TrackTag(
@@ -64,7 +67,7 @@ object TagStore {
 
     /** Tags in the generator's form (circuit fractions). */
     fun loadLayout(ctx: Context, coasterId: String) =
-        load(ctx, coasterId).map { LayoutTag(it.type.name, it.fStart, it.fEnd, it.name) }
+        load(ctx, coasterId).map { it.toLayout() }
 
     fun save(ctx: Context, coasterId: String, profile: RideProfile, tags: List<TrackTag>) {
         File(dir(ctx), "$coasterId.json").writeText(toJson(coasterId, profile, tags).toString(2))
