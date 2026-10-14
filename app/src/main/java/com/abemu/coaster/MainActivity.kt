@@ -50,6 +50,7 @@ class MainActivity : ComponentActivity() {
             MaterialTheme(colorScheme = darkColorScheme()) {
                 RideSounds(vm)
                 RideHaptics(vm)
+                ScaledToDesign {
                 Row(Modifier.fillMaxSize().background(Color(0xFF111316))) {
                     val divider = @androidx.compose.runtime.Composable {
                         androidx.compose.foundation.layout.Spacer(Modifier.width(2.dp).fillMaxHeight().background(Color.Black))
@@ -74,7 +75,27 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                 }
+                }
             }
         }
+    }
+}
+
+/** Layout size the UI was designed and verified at (Galaxy Tab S9 Ultra at 340 dpi). */
+private const val DESIGN_WIDTH_DP = 1393f
+private const val DESIGN_HEIGHT_DP = 870f
+
+/**
+ * Scales the whole UI up on screens with more room than the design size, so controls keep their
+ * intended proportions (the real S9 Ultra runs at 280 dpi, which would otherwise shrink everything ~20%).
+ */
+@androidx.compose.runtime.Composable
+private fun ScaledToDesign(content: @androidx.compose.runtime.Composable () -> Unit) {
+    androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxSize()) {
+        val scale = minOf(maxWidth.value / DESIGN_WIDTH_DP, maxHeight.value / DESIGN_HEIGHT_DP).coerceAtLeast(1f)
+        val d = androidx.compose.ui.platform.LocalDensity.current
+        androidx.compose.runtime.CompositionLocalProvider(
+            androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(d.density * scale, d.fontScale),
+        ) { content() }
     }
 }
