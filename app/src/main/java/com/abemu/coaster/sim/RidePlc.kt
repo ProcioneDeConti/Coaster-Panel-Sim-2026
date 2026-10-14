@@ -459,9 +459,9 @@ class RidePlc(val plant: Plant) {
 
         statusText = when {
             eStopped -> when {
-                inputs.loadStandEstop -> "E-STOP at LOAD STAND – release, then FAULT RESET"
-                inputs.unloadStandEstop -> "E-STOP at UNLOAD STAND – release, then FAULT RESET"
-                inputs.estopPressed -> "E-STOP at CONSOLE – release, then FAULT RESET"
+                inputs.loadStandEstop -> "E-STOP at LOAD STAND – twist-release (press and hold), then FAULT RESET"
+                inputs.unloadStandEstop -> "E-STOP at UNLOAD STAND – twist-release (press and hold), then FAULT RESET"
+                inputs.estopPressed -> "E-STOP at CONSOLE – twist-release (press and hold), then FAULT RESET"
                 else -> "Press FAULT RESET"
             }
             hasC && state != RideState.RUNNING -> "Fault active – correct and reset"

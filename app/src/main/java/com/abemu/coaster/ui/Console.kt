@@ -129,13 +129,13 @@ fun OperatorConsole(vm: SimViewModel, modifier: Modifier = Modifier) {
         }
 
         // --- Dispatch (two-hand) ---
-        PanelSection(if (inp.singleButtonDispatch) "DISPATCH  –  SINGLE-BUTTON MODE" else "DISPATCH  –  PRESS BOTH WITHIN 0.5 s") {
+        // Engraved legends only: ride status and mode messages belong on the HMI, not the hardware panel.
+        PanelSection("DISPATCH") {
             val ready = plc.dispatchReady
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 PushButton("DISPATCH", Lens.Green, ready && blink || plc.releaseLatch[0], { inp.dispatchL = it }, size = 56.dp)
                 Column(Modifier.weight(1f).padding(horizontal = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(plc.statusText, color = if (ready) Lens.Green else Color(0xFFE0E0E0), fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold)
+                    LegendPlate("TWO-HAND DISPATCH\nPRESS BOTH TOGETHER", 150.dp)
                 }
                 PushButton("DISPATCH", Lens.Green, ready && blink || plc.releaseLatch[0], { inp.dispatchR = it }, size = 56.dp)
             }

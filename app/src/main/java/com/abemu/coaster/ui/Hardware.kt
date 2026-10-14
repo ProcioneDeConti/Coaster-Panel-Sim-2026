@@ -25,6 +25,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
@@ -88,6 +89,41 @@ private fun DrawScope.bezel(r: Float) {
     drawCircle(Color(0xFF1C1C1C), r * 0.86f)
 }
 
+/** Pushbutton mount: square chrome collar with a raised guard ring, so buttons read as pressable. */
+private fun DrawScope.buttonCollar(r: Float) {
+    val c = r * 0.28f
+    drawRoundRect(Color.Black.copy(alpha = 0.45f), Offset(center.x - r + 2f, center.y - r + 4f), Size(r * 2, r * 2),
+        androidx.compose.ui.geometry.CornerRadius(c))
+    drawRoundRect(
+        Brush.linearGradient(
+            listOf(Color(0xFFF2F2F2), Color(0xFF9A9A9A), Color(0xFF5A5A5A)),
+            start = Offset(center.x - r, center.y - r), end = Offset(center.x + r, center.y + r),
+        ),
+        Offset(center.x - r, center.y - r), Size(r * 2, r * 2), androidx.compose.ui.geometry.CornerRadius(c),
+    )
+    drawRoundRect(Color(0xFF2A2A2A), Offset(center.x - r * 0.9f, center.y - r * 0.9f), Size(r * 1.8f, r * 1.8f),
+        androidx.compose.ui.geometry.CornerRadius(c * 0.8f))
+    // Raised guard ring around the cap.
+    drawCircle(Color(0xFF151515), r * 0.86f)
+    drawCircle(
+        Brush.linearGradient(listOf(Color(0xFFBDBDBD), Color(0xFF3A3A3A)),
+            start = Offset(center.x - r, center.y - r), end = Offset(center.x + r, center.y + r)),
+        r * 0.86f, style = Stroke(r * 0.07f),
+    )
+}
+
+/** Pilot light mount: black knurled ring, no collar. */
+private fun DrawScope.lightRing(r: Float) {
+    drawCircle(Color(0xFF101010), r)
+    for (k in 0 until 36) {
+        val a = Math.toRadians(k * 10.0)
+        val cs = kotlin.math.cos(a).toFloat()
+        val sn = kotlin.math.sin(a).toFloat()
+        drawLine(Color(0xFF4A4A4A), Offset(center.x + cs * r * 0.84f, center.y + sn * r * 0.84f),
+            Offset(center.x + cs * r * 0.98f, center.y + sn * r * 0.98f), 1.5f)
+    }
+}
+
 /**
  * 22 mm style illuminated (or plain) momentary pushbutton. Reports press and release so
  * the PLC sees a real held input (needed for two-hand dispatch and hold-to-run).
@@ -119,8 +155,8 @@ fun PushButton(
                 },
         ) {
             val r = this.size.minDimension / 2
-            bezel(r)
-            val capR = r * (if (pressed) 0.70f else 0.76f)
+            buttonCollar(r)
+            val capR = r * (if (pressed) 0.66f else 0.72f)
             val on = lit && illuminated
             if (on) {
                 drawCircle(
@@ -137,6 +173,8 @@ fun PushButton(
                 capR,
             )
             drawCircle(Color.Black.copy(alpha = 0.5f), capR, style = Stroke(2f))
+            // Flat cap face: a soft rim highlight rather than a dome.
+            if (!pressed) drawCircle(Color.White.copy(alpha = 0.18f), capR * 0.82f, style = Stroke(capR * 0.08f))
         }
         Spacer(Modifier.height(4.dp))
         LegendPlate(legend, plateWidth)
@@ -148,23 +186,33 @@ fun PilotLight(legend: String, color: Color, lit: Boolean, modifier: Modifier = 
     Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
         Canvas(Modifier.size(size)) {
             val r = this.size.minDimension / 2
-            bezel(r)
-            if (lit) drawCircle(Brush.radialGradient(listOf(color.copy(alpha = 0.6f), Color.Transparent), center, r * 1.1f), r * 1.1f)
+            if (lit) drawCircle(Brush.radialGradient(listOf(color.copy(alpha = 0.6f), Color.Transparent), center, r * 1.25f), r * 1.25f)
+            lightRing(r)
             val c = if (lit) color else lerp(color, Color.Black, 0.7f)
+            val lens = r * 0.8f
             drawCircle(
                 Brush.radialGradient(
                     listOf(lerp(c, Color.White, if (lit) 0.7f else 0.15f), c),
                     center = Offset(center.x - r * 0.2f, center.y - r * 0.25f), radius = r * 0.9f,
                 ),
-                r * 0.72f,
+                lens,
             )
+            // Prismatic lens: concentric Fresnel rings and facet lines.
+            val facet = Color.White.copy(alpha = if (lit) 0.28f else 0.12f)
+            listOf(0.3f, 0.55f, 0.78f).forEach { f -> drawCircle(facet, lens * f, style = Stroke(1.2f)) }
+            for (k in 0 until 6) {
+                val a = Math.toRadians(k * 30.0)
+                val d = Offset(kotlin.math.cos(a).toFloat(), kotlin.math.sin(a).toFloat()) * (lens * 0.95f)
+                drawLine(facet.copy(alpha = facet.alpha * 0.7f), center - d, center + d, 1f)
+            }
+            drawCircle(Color.White.copy(alpha = 0.35f), lens * 0.22f, Offset(center.x - lens * 0.35f, center.y - lens * 0.4f))
         }
         Spacer(Modifier.height(3.dp))
         LegendPlate(legend, 66.dp)
     }
 }
 
-/** Mushroom-head E-Stop: tap to push (latches), press and hold to twist-release. */
+/** Illuminated mushroom-head E-Stop: tap to push (latches, head flashes red), press and hold to twist-release. */
 @Composable
 fun EStopButton(
     pressed: Boolean,
@@ -192,10 +240,13 @@ fun EStopButton(
             drawCircle(Color(0xFF8A7000), r, style = Stroke(2f))
             drawCircle(Color(0xFF3A3A3A), r * 0.62f)
             val head = if (pressed) r * 0.52f else r * 0.6f
+            val lit = pressed && flasher()
             drawCircle(Color.Black.copy(alpha = 0.4f), head * 1.04f, center + Offset(3f, 5f))
+            if (lit) drawCircle(Brush.radialGradient(listOf(Color(0xCCFF2020), Color.Transparent), center, r * 0.95f), r * 0.95f)
             drawCircle(
                 Brush.radialGradient(
-                    listOf(Color(0xFFFF7A7A), Color(0xFFD01010), Color(0xFF6E0000)),
+                    if (lit) listOf(Color(0xFFFFD0D0), Color(0xFFFF3030), Color(0xFFB00000))
+                    else listOf(Color(0xFFFF7A7A), Color(0xFFD01010), Color(0xFF6E0000)),
                     center = Offset(center.x - head * 0.35f, center.y - head * 0.4f), radius = head * 1.6f,
                 ),
                 head,
@@ -209,7 +260,7 @@ fun EStopButton(
             }
         }
         Spacer(Modifier.height(4.dp))
-        LegendPlate(if (pressed) "E-STOP\nHOLD TO RELEASE" else label, plateWidth)
+        LegendPlate(label, plateWidth)
     }
 }
 
@@ -286,7 +337,41 @@ fun PanelSection(title: String, modifier: Modifier = Modifier, content: @Composa
             .padding(8.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        Text(title, color = Color(0xFFB8C0CA), fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
+        SteelLabel(title)
         content()
+    }
+}
+
+/** Riveted brushed-stainless nameplate with an engraved black legend, as fitted to real control panels. */
+@Composable
+fun SteelLabel(text: String, modifier: Modifier = Modifier) {
+    Box(
+        modifier
+            .background(
+                Brush.verticalGradient(listOf(Color(0xFFE4E7EA), Color(0xFFB9BEC3), Color(0xFFD3D7DB), Color(0xFFA9AEB4))),
+                RoundedCornerShape(2.dp),
+            )
+            .border(1.dp, Color(0xFF6E747A), RoundedCornerShape(2.dp))
+            .drawBehind {
+                // Faint horizontal brushing.
+                var y = 2f
+                while (y < size.height) {
+                    drawLine(Color.White.copy(alpha = 0.18f), Offset(0f, y), Offset(size.width, y), 1f)
+                    y += 3f
+                }
+                // A rivet at each end.
+                val rr = 2.6.dp.toPx()
+                listOf(6.dp.toPx(), size.width - 6.dp.toPx()).forEach { x ->
+                    val c = Offset(x, size.height / 2)
+                    drawCircle(Color(0xFF5E646A), rr + 0.8f, c)
+                    drawCircle(
+                        Brush.radialGradient(listOf(Color.White, Color(0xFF9EA4AA)), center = c - Offset(rr * 0.4f, rr * 0.4f), radius = rr * 1.4f),
+                        rr, c,
+                    )
+                }
+            }
+            .padding(horizontal = 16.dp, vertical = 2.dp),
+    ) {
+        Text(text, color = Color(0xFF1A1C1E), fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
     }
 }
