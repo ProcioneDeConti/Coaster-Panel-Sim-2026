@@ -400,8 +400,18 @@ fun SimPage(vm: SimViewModel, onOpenEditor: () -> Unit) {
                     }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    HmiLabel("Sound", 11.sp, modifier = Modifier.width(90.dp))
+                    HmiLabel("Sound (all)", 11.sp, modifier = Modifier.width(90.dp))
                     HmiButton(if (vm.soundOn) "ON" else "OFF", active = vm.soundOn, activeColor = Hmi.Info) { vm.soundOn = !vm.soundOn }
+                }
+                SoundKind.entries.chunked(2).forEach { pair ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        pair.forEach { k ->
+                            val en = vm.soundEnabled[k] != false
+                            HmiButton((if (en) "■ " else "□ ") + k.label, Modifier.weight(1f), enabled = vm.soundOn,
+                                active = en, activeColor = Hmi.Info, fontSize = 10.sp) { vm.soundEnabled[k] = !en }
+                        }
+                        if (pair.size == 1) Box(Modifier.weight(1f))
+                    }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                     HmiLabel("Volume", 11.sp, modifier = Modifier.width(90.dp))

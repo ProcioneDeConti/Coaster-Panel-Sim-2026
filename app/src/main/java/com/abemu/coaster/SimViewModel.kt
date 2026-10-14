@@ -5,6 +5,7 @@ import androidx.compose.runtime.mutableDoubleStateOf
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
@@ -29,6 +30,8 @@ class SimViewModel : ViewModel() {
     var plc by mutableStateOf(build(coasterId, 3)); private set
     var timeScale by mutableDoubleStateOf(1.0)
     var soundOn by mutableStateOf(true)
+    /** Per-sound on/off; missing entries count as on. */
+    val soundEnabled = mutableStateMapOf<com.abemu.coaster.ui.SoundKind, Boolean>()
     var volume by mutableFloatStateOf(0.5f)
     val frame = mutableLongStateOf(0L)
 
