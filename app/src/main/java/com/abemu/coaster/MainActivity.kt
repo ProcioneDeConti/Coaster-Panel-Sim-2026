@@ -1,5 +1,6 @@
 package com.abemu.coaster
 
+import android.os.Build
 import android.os.Bundle
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
@@ -18,8 +19,11 @@ import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import com.abemu.coaster.ui.Haptics
 import com.abemu.coaster.ui.HmiTerminal
+import com.abemu.coaster.ui.MapPane
 import com.abemu.coaster.ui.OperatorConsole
+import com.abemu.coaster.ui.RideHaptics
 import com.abemu.coaster.ui.RideSounds
 
 class MainActivity : ComponentActivity() {
@@ -29,7 +33,14 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         vm.tagLoader = { com.abemu.coaster.dev.TagStore.loadLayout(this, it) }
         vm.reconfigure()
+        Haptics.init(this)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        // Draw under the Galaxy Tab S9 Ultra's notch instead of letterboxing; it only covers bezel branding.
+        if (Build.VERSION.SDK_INT >= 30) {
+            window.attributes = window.attributes.apply {
+                layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+            }
+        }
         WindowCompat.setDecorFitsSystemWindows(window, false)
         WindowInsetsControllerCompat(window, window.decorView).apply {
             hide(WindowInsetsCompat.Type.systemBars())
@@ -38,10 +49,30 @@ class MainActivity : ComponentActivity() {
         setContent {
             MaterialTheme(colorScheme = darkColorScheme()) {
                 RideSounds(vm)
+                RideHaptics(vm)
                 Row(Modifier.fillMaxSize().background(Color(0xFF111316))) {
-                    HmiTerminal(vm, Modifier.weight(0.6f).fillMaxHeight())
-                    androidx.compose.foundation.layout.Spacer(Modifier.width(2.dp).fillMaxHeight().background(Color.Black))
-                    OperatorConsole(vm, Modifier.weight(0.4f).fillMaxHeight())
+                    val divider = @androidx.compose.runtime.Composable {
+                        androidx.compose.foundation.layout.Spacer(Modifier.width(2.dp).fillMaxHeight().background(Color.Black))
+                    }
+                    when (vm.layout) {
+                        ScreenLayout.HMI_CONSOLE -> {
+                            HmiTerminal(vm, Modifier.weight(0.6f).fillMaxHeight())
+                            divider()
+                            OperatorConsole(vm, Modifier.weight(0.4f).fillMaxHeight())
+                        }
+                        ScreenLayout.HMI_MAP_CONSOLE -> {
+                            HmiTerminal(vm, Modifier.weight(0.39f).fillMaxHeight())
+                            divider()
+                            MapPane(vm, Modifier.weight(0.23f).fillMaxHeight())
+                            divider()
+                            OperatorConsole(vm, Modifier.weight(0.38f).fillMaxHeight())
+                        }
+                        ScreenLayout.MAP_CONSOLE -> {
+                            MapPane(vm, Modifier.weight(0.6f).fillMaxHeight())
+                            divider()
+                            OperatorConsole(vm, Modifier.weight(0.4f).fillMaxHeight())
+                        }
+                    }
                 }
             }
         }

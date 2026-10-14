@@ -11,6 +11,7 @@ import com.abemu.coaster.sim.RidePlc
 import com.abemu.coaster.sim.RideProfile
 import com.abemu.coaster.sim.RideState
 import com.abemu.coaster.sim.Severity
+import com.abemu.coaster.sim.passes
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -201,9 +202,87 @@ class RideCycleTest {
         assertEquals(null, plc.alarms.firstOut)
     }
 
+    private fun runningLift(): RidePlc {
+        val plc = RidePlc(Plant(RideProfile.create(ProfileType.LIFT), 3))
+        plc.inputs.mode = KeyMode.AUTO
+        press(plc) { plc.inputs.powerOn = it }
+        press(plc) { plc.inputs.rideStart = it }
+        step(plc, 7.0)
+        assertEquals(RideState.RUNNING, plc.state)
+        assertTrue(plc.safety.outputsOn)
+        return plc
+    }
+
+    @Test fun forcedEstopInputCaughtBySafetyTask() {
+        val plc = runningLift()
+        plc.force("ESTOP_PB_NC", true) // mask the console E-Stop from the standard task
+        plc.inputs.estopPressed = true
+        step(plc, 0.5)
+        assertTrue("safety must trip on its own inputs", !plc.safety.outputsOn)
+        assertTrue(!plc.plant.safetyPower)
+        assertEquals(RideState.RUNNING, plc.state)
+        step(plc, 1.0)
+        assertEquals(RideState.ESTOP, plc.state)
+        assertEquals("SAFE_STD", plc.alarms.firstOut?.code)
+        // Clear it all and reset.
+        plc.inputs.estopPressed = false
+        plc.removeAllForces()
+        step(plc, 0.5)
+        press(plc) { plc.inputs.faultReset = it }
+        assertEquals(RideState.STOPPED, plc.state)
+        assertTrue(plc.safety.outputsOn)
+    }
+
+    @Test fun weldedChannelLatchesDiscrepancy() {
+        val plc = runningLift()
+        plc.plant.faults.estopWeldedB = 1 // load stand
+        plc.inputs.loadStandEstop = true
+        step(plc, 1.0)
+        assertTrue(plc.alarms.isActive("SAFE_DISC"))
+        plc.inputs.loadStandEstop = false
+        step(plc, 0.5)
+        press(plc) { plc.inputs.faultReset = it }
+        assertEquals("discrepancy is latched until both channels open", RideState.ESTOP, plc.state)
+        // Repair the contact, cycle the E-Stop, then reset.
+        plc.plant.faults.estopWeldedB = -1
+        press(plc) { plc.inputs.loadStandEstop = it }
+        press(plc) { plc.inputs.faultReset = it }
+        assertEquals(RideState.STOPPED, plc.state)
+        assertTrue(plc.safety.outputsOn)
+    }
+
+    @Test fun forcedBrakeOutputCannotBeatSafetyPower() {
+        val plc = runningLift()
+        plc.inputs.estopPressed = true
+        step(plc, 0.5)
+        val b = plc.profile.blocks.first { it.stopPos != null && it.index != 0 }
+        plc.force("${b.tag}_BRK_SOL", true)
+        step(plc, 1.0)
+        assertTrue(plc.plant.brakes[b.index].cmdOpen)
+        assertTrue("brake must stay closed with safety power off", plc.plant.brakes[b.index].closedProx)
+        plc.force("${b.tag}_BRK_SOL", null)
+        assertTrue(!plc.forces.any)
+    }
+
+    @Test fun ladderAndIoMapBuildForEveryRide() {
+        CoasterLibrary.all.forEach { spec ->
+            val plc = RidePlc(Plant(RideProfile.create(spec), 3))
+            plc.inputs.mode = KeyMode.AUTO
+            press(plc) { plc.inputs.powerOn = it }
+            val rungs = com.abemu.coaster.sim.Ladder.build(plc)
+            assertTrue(rungs.isNotEmpty())
+            rungs.forEach { r -> r.inputs.forEach { it.passes() }; r.coil.value() }
+            val mods = com.abemu.coaster.sim.IoMap.build(plc)
+            assertEquals(spec.name, mods.size, mods.map { it.slot }.toSet().size)
+            mods.forEach { m -> m.points.forEach { it.value(plc) } }
+            val tags = mods.flatMap { m -> m.points.map { it.tag } }
+            assertEquals("${spec.name} duplicate I/O tags", tags.size, tags.toSet().size)
+        }
+    }
+
     @Test fun diagnosticsCoverAlarmCodes() {
         val codes = listOf("ESTOP_PB", "ESTOP_LOAD", "ESTOP_UNLOAD", "SAFETY", "AIR", "LIFT_VFD", "LIFT_OL", "LSM", "LSM_SPD",
-            "ROLLBACK", "COLLIDE", "GATE", "ROW3", "BRK2", "STALL1", "UNEXP2", "OVR3")
+            "ROLLBACK", "COLLIDE", "GATE", "ROW3", "BRK2", "STALL1", "UNEXP2", "OVR3", "SAFE_DISC", "SAFE_IO", "SAFE_STD")
         codes.forEach { assertTrue("no diagnosis for $it", com.abemu.coaster.sim.Diagnostics.forCode(it) != null) }
         assertEquals(null, com.abemu.coaster.sim.Diagnostics.forCode("BRKX"))
     }

@@ -58,10 +58,11 @@ object Hmi {
     val Off = Color(0xFF8E959C)
 }
 
-enum class HmiPage(val key: String, val title: String) {
-    OVERVIEW("F1", "OVERVIEW"), STATION("F2", "STATION"), ALARMS("F3", "ALARMS"),
-    MAINT("F4", "MANUAL / MAINT"), IO("F5", "I/O STATUS"), SIM("F6", "INSTRUCTOR"),
-    TRENDS("F7", "TRENDS"),
+/** [short] labels the function key when the HMI pane is narrow (three-pane layout). */
+enum class HmiPage(val key: String, val title: String, val short: String = title) {
+    OVERVIEW("F1", "OVERVIEW", "OVERVW"), STATION("F2", "STATION"), ALARMS("F3", "ALARMS"),
+    MAINT("F4", "MAN / MAINT", "MAINT"), IO("F5", "I/O STATUS", "I/O"), SIM("F6", "INSTRUCTOR", "INSTR"),
+    TRENDS("F7", "TRENDS"), LOGIC("F8", "LOGIC"), TRAINING("F9", "TRAINING", "TRAIN"),
     EDITOR("DEV", "TRACK EDITOR"),
 }
 
@@ -93,13 +94,13 @@ fun HmiTerminal(vm: SimViewModel, modifier: Modifier = Modifier) {
 
     Column(
         modifier
-            .background(Brush.verticalGradient(listOf(Color(0xFF2E3238), Color(0xFF1A1C20))))
+            .background(Brush.verticalGradient(listOf(Color(0xFFD3D7DB), Color(0xFFB9BEC3))))
             .padding(10.dp),
     ) {
-        Row(Modifier.padding(bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("Allen-Bradley", color = Color(0xFFD5DAE0), fontSize = 13.sp, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.weight(1f))
-            Text("PanelView Plus 1000", color = Color(0xFFB5BCC5), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+        Row(Modifier.padding(bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            BezelHeader(Modifier.weight(1f))
+            Spacer(Modifier.width(8.dp))
+            LayoutChip(vm)
         }
         Column(
             Modifier
@@ -110,6 +111,7 @@ fun HmiTerminal(vm: SimViewModel, modifier: Modifier = Modifier) {
         ) {
             TitleBar(vm, page) { showLogin = true }
             AlarmBanner(vm) { page = HmiPage.ALARMS }
+            DrillBanner(vm) { page = HmiPage.TRAINING }
             Box(Modifier.weight(1f).fillMaxWidth().padding(6.dp)) {
                 when (page) {
                     HmiPage.OVERVIEW -> OverviewPage(vm)
@@ -122,15 +124,62 @@ fun HmiTerminal(vm: SimViewModel, modifier: Modifier = Modifier) {
                     HmiPage.EDITOR -> if (vm.access >= AccessLevel.INSTRUCTOR) EditorPage(vm) { page = HmiPage.SIM }
                         else LockedPage("INSTRUCTOR") { showLogin = true }
                     HmiPage.TRENDS -> TrendsPage(vm)
+                    HmiPage.LOGIC -> LogicPage(vm)
+                    HmiPage.TRAINING -> TrainingPage(vm)
                 }
                 if (showLogin) LoginPad(vm) { showLogin = false }
             }
         }
-        Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            HmiPage.entries.filter { it != HmiPage.EDITOR }.forEach { p ->
-                FunctionKey(p.key, p.title, page == p, Modifier.weight(1f)) { page = p }
+        androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxWidth().padding(top = 8.dp)) {
+            val narrow = maxWidth < 760.dp
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(if (narrow) 4.dp else 6.dp)) {
+                HmiPage.entries.filter { it != HmiPage.EDITOR }.forEach { p ->
+                    FunctionKey(p.key, if (narrow) p.short else p.title, page == p, Modifier.weight(1f)) { Haptics.tick(); page = p }
+                }
             }
         }
+    }
+}
+
+private val BrandBlue = Color(0xFF1F5AA8)
+
+/** PanelView-style nameplate: blue-outlined strip, oval logo, brand name, and model in a pill on a blue band. */
+@Composable
+private fun BezelHeader(modifier: Modifier = Modifier) {
+    Row(
+        modifier
+            .height(34.dp)
+            .background(
+                Brush.horizontalGradient(
+                    0f to Color.White, 0.32f to Color.White, 0.62f to Color(0xFF4E86CC), 1f to Color(0xFF2F68B5),
+                ),
+                RoundedCornerShape(6.dp),
+            )
+            .border(2.dp, BrandBlue, RoundedCornerShape(6.dp))
+            .padding(horizontal = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        BrLogo()
+        Spacer(Modifier.width(8.dp))
+        Text("Ballin'-Radley", color = BrandBlue, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold,
+            fontStyle = androidx.compose.ui.text.font.FontStyle.Italic)
+        Spacer(Modifier.weight(1f))
+        Box(Modifier.background(Color.White, RoundedCornerShape(50)).padding(horizontal = 12.dp, vertical = 2.dp)) {
+            Text("PanelView Plus 1000", color = BrandBlue, fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                fontStyle = androidx.compose.ui.text.font.FontStyle.Italic)
+        }
+    }
+}
+
+/** Made-up oval "BR" badge in the style of the real nameplate logo. */
+@Composable
+private fun BrLogo() {
+    Column(
+        Modifier.width(40.dp).height(26.dp).background(BrandBlue, RoundedCornerShape(50)).border(1.5.dp, Color.White, RoundedCornerShape(50)),
+        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center,
+    ) {
+        Text("BR", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Black, lineHeight = 12.sp)
+        Text("BALLIN'", color = Color.White, fontSize = 5.sp, fontWeight = FontWeight.Bold, lineHeight = 6.sp)
     }
 }
 
@@ -184,6 +233,8 @@ fun LoginPad(vm: SimViewModel, onDismiss: () -> Unit) {
 
 @Composable
 private fun TitleBar(vm: SimViewModel, page: HmiPage, onUser: () -> Unit) {
+    // Skippable composable: read the frame tick so it redraws with the sim, not just on page changes.
+    vm.frame.longValue
     val plc = vm.plc
     Row(
         Modifier.fillMaxWidth().background(Hmi.Header).padding(horizontal = 8.dp, vertical = 5.dp),
@@ -194,6 +245,12 @@ private fun TitleBar(vm: SimViewModel, page: HmiPage, onUser: () -> Unit) {
         Spacer(Modifier.weight(1f))
         Box(Modifier.background(stateColor(plc.state), RoundedCornerShape(3.dp)).padding(horizontal = 8.dp, vertical = 2.dp)) {
             Text(plc.state.label, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+        }
+        if (plc.forces.any) {
+            Spacer(Modifier.width(8.dp))
+            Box(Modifier.background(if (flasher()) Hmi.Warn else Color(0xFF8A6400), RoundedCornerShape(3.dp)).padding(horizontal = 6.dp, vertical = 2.dp)) {
+                Text("I/O FORCES (${plc.forces.all.size})", color = Color.Black, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            }
         }
         Spacer(Modifier.width(8.dp))
         Box(Modifier.border(1.dp, Color(0xFFAFC4DD), RoundedCornerShape(3.dp)).padding(horizontal = 6.dp, vertical = 2.dp)) {
@@ -213,6 +270,7 @@ private fun TitleBar(vm: SimViewModel, page: HmiPage, onUser: () -> Unit) {
 
 @Composable
 private fun AlarmBanner(vm: SimViewModel, onClick: () -> Unit) {
+    vm.frame.longValue
     val plc = vm.plc
     val top = plc.alarms.firstOut ?: plc.alarms.active.firstOrNull()
     val blink = flasher()
@@ -282,7 +340,7 @@ fun HmiButton(
                 RoundedCornerShape(4.dp),
             )
             .border(1.dp, Color(0xFF6A7178), RoundedCornerShape(4.dp))
-            .clickable(enabled = enabled, onClick = onClick)
+            .clickable(enabled = enabled) { Haptics.tick(); onClick() }
             .padding(horizontal = 10.dp, vertical = 7.dp),
         contentAlignment = Alignment.Center,
     ) {
@@ -312,7 +370,7 @@ fun HmiHoldButton(text: String, modifier: Modifier = Modifier, enabled: Boolean 
             .pointerInput(Unit) {
                 awaitEachGesture {
                     awaitFirstDown()
-                    if (en) { held = true; cb(true) }
+                    if (en) { held = true; Haptics.tick(); cb(true) }
                     waitForUpOrCancellation()
                     if (held) { held = false; cb(false) }
                 }

@@ -311,91 +311,6 @@ fun MaintPage(vm: SimViewModel) {
     }
 }
 
-// ================================================================ I/O
-
-private data class Io(val addr: String, val tag: String, val on: Boolean)
-
-@Composable
-fun IoPage(vm: SimViewModel) {
-    vm.frame.longValue
-    val plc = vm.plc
-    val p = plc.plant
-    val i = plc.inputs
-    val bl = plc.profile.blocks
-    val console = listOf(
-        "ESTOP_PB_NC" to !i.estopPressed, "KEY_AUTO" to (i.mode == KeyMode.AUTO), "KEY_MANUAL" to (i.mode == KeyMode.MANUAL),
-        "KEY_MAINT" to (i.mode == KeyMode.MAINT), "PWR_ON_PB" to i.powerOn, "PWR_OFF_PB_NC" to !i.powerOff,
-        "RIDE_START_PB" to i.rideStart, "CS_PB_NC" to !i.controlledStop, "FAULT_RST_PB" to i.faultReset,
-        "SILENCE_PB" to i.silence, "DISPATCH_L_PB" to i.dispatchL, "DISPATCH_R_PB" to i.dispatchR,
-        "RESTR_OPEN_PB" to i.restraintOpen, "RESTR_LOCK_PB" to i.restraintClose, "GATE_OPEN_PB" to i.gatesOpen,
-        "GATE_CLOSE_PB" to i.gatesClose,
-    ).mapIndexed { n, (t, v) -> Io("Local:1:I.Data.$n", t, v) }
-    val field = buildList {
-        bl.forEach { add("${it.tag}_PX_ENTRY" to p.entrySensor(it.index)) }
-        bl.filter { it.stopPos != null }.forEach {
-            add("${it.tag}_BRK_CLOSED_PX" to p.brakes[it.index].closedProx)
-            add("${it.tag}_BRK_OPEN_PX" to p.brakes[it.index].openProx)
-            add("${it.tag}_PX_STOP" to (p.trainAtStop(it.index) != null))
-        }
-        add("GATES_CLOSED_LS" to p.gateClosedSensor)
-        add("LOAD_STAND_ESTOP_NC" to !i.loadStandEstop)
-        add("UNLOAD_STAND_ESTOP_NC" to !i.unloadStandEstop)
-        add("MSR1_SAFETY_OK" to (!p.faults.safetyCircuit && !i.anyEstop))
-        add("AIR_PRESS_SW" to (p.airPsi >= 75))
-        if (plc.profile.type == ProfileType.LIFT) {
-            add("LIFT_CREST_PX" to p.bodyAt(plc.profile.liftCrestSensor))
-            add("LIFT_VFD_READY" to !p.faults.liftVfd)
-            add("LIFT_OL1_OK" to !p.faults.liftOverload)
-        } else {
-            add("LSM_EXIT_PX" to p.bodyAt(plc.profile.launchEnd))
-            add("LSM_CREST_PX" to p.bodyAt(plc.profile.crestSensor))
-            add("LSM_DRIVE_READY" to !p.faults.lsmFault)
-        }
-        for (r in 0 until plc.profile.rows) add("ROW${r + 1}_LOCKED_LS" to p.rowLockSensor(r))
-        plc.profile.sensors.forEachIndexed { n, s -> add("${s.name.uppercase().replace(' ', '_')}_PX" to p.proxSensor(n)) }
-    }.mapIndexed { n, (t, v) -> Io("Local:${2 + n / 16}:I.Data.${n % 16}", t, v) }
-    val outputs = buildList {
-        bl.filter { it.stopPos != null }.forEach { add("${it.tag}_BRK_SOL" to p.brakes[it.index].cmdOpen) }
-        bl.forEach { add("${it.tag}_DRIVE_TIRES" to p.tiresCmd[it.index]) }
-        if (plc.profile.type == ProfileType.LIFT) add("LIFT_VFD_RUN" to p.liftRunCmd)
-        else { add("LSM_FIRE" to p.lsmFireCmd); add("LSM_POSITION" to p.lsmPositionCmd) }
-        add("GATE_OPEN_SOL" to p.gatesOpenCmd)
-        add("RESTR_UNLOCK_SOL" to p.restraintUnlockCmd)
-        add("COMPRESSOR_RUN" to (p.compressorEnabled && p.airPsi < 110))
-        add("HORN" to (plc.hornActive && flasher()))
-        add("DISPATCH_LT" to plc.dispatchReady)
-        add("FAULT_LT" to plc.alarms.active.isNotEmpty())
-    }.mapIndexed { n, (t, v) -> Io("Local:${5 + n / 16}:O.Data.${n % 16}", t, v) }
-
-    Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        IoColumn("DIGITAL INPUTS – CONSOLE", console, Modifier.weight(1f))
-        IoColumn("DIGITAL INPUTS – FIELD", field, Modifier.weight(1f))
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            IoColumn("DIGITAL OUTPUTS", outputs, Modifier.weight(1f))
-            HmiFrame("ANALOG – Local:8:I") {
-                ValueBox("Ch0 Main air (psi)", "%.1f".format(p.airPsi))
-                if (plc.profile.type == ProfileType.LIFT) ValueBox("Ch1 Lift speed (m/s)", "%.2f".format(p.chainSpeed))
-                p.trains.forEach { t -> ValueBox("Train ${t.id} speed / pos", "%5.1f / %5.0f m".format(abs(t.v), t.s)) }
-            }
-        }
-    }
-}
-
-@Composable
-private fun IoColumn(title: String, points: List<Io>, modifier: Modifier) {
-    HmiFrame(title, modifier.fillMaxHeight()) {
-        LazyColumn {
-            items(points) { io ->
-                Row(Modifier.padding(vertical = 1.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Indicator(io.on, Hmi.Ok, Color(0xFF5E666E), 10)
-                    Text(" ${io.addr}", fontSize = 9.sp, fontFamily = FontFamily.Monospace, color = Hmi.Dim, modifier = Modifier.width(118.dp))
-                    Text(io.tag, fontSize = 10.sp, fontFamily = FontFamily.Monospace, color = Hmi.Text)
-                }
-            }
-        }
-    }
-}
-
 // ================================================================ INSTRUCTOR / SIM
 
 @Composable
@@ -430,6 +345,11 @@ fun SimPage(vm: SimViewModel, onOpenEditor: () -> Unit) {
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                     HmiLabel("Sound (all)", 11.sp, modifier = Modifier.width(90.dp))
                     HmiButton(if (vm.soundOn) "ON" else "OFF", active = vm.soundOn, activeColor = Hmi.Info) { vm.soundOn = !vm.soundOn }
+                }
+                WebMapControls(vm)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    HmiLabel("Haptics", 11.sp, modifier = Modifier.width(90.dp))
+                    HmiButton(if (vm.hapticsOn) "ON" else "OFF", active = vm.hapticsOn, activeColor = Hmi.Info) { vm.hapticsOn = !vm.hapticsOn }
                 }
                 SoundKind.entries.chunked(2).forEach { pair ->
                     Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -470,6 +390,14 @@ fun SimPage(vm: SimViewModel, onOpenEditor: () -> Unit) {
                     FaultToggle("Launch underspeed (causes rollback)", f.launchUnderspeed) { f.launchUnderspeed = it }
                 }
                 FaultToggle("Station gate stuck open", f.gateStuck) { f.gateStuck = it }
+                FaultToggle("Safety I/O module connection fault", f.safetyIoFault) { f.safetyIoFault = it }
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    HmiLabel("E-Stop ch B welded", 11.sp, modifier = Modifier.weight(1f))
+                    (listOf(-1) + plc.safety.stations.indices).forEach { k ->
+                        HmiButton(if (k < 0) "–" else plc.safety.stations[k].take(4), active = f.estopWeldedB == k,
+                            activeColor = if (k < 0) Hmi.Info else Hmi.Bad, fontSize = 9.sp) { f.estopWeldedB = k }
+                    }
+                }
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
                     HmiLabel("Restraint fault row", 11.sp, modifier = Modifier.weight(1f))
                     (listOf(-1) + (0 until plc.profile.rows)).forEach { r ->

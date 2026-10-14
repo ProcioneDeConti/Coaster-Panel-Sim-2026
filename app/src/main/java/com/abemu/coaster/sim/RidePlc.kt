@@ -53,6 +53,8 @@ class RidePlc(val plant: Plant) {
     private val n = profile.blocks.size
     val inputs = Inputs(n)
     val alarms = AlarmManager()
+    val forces = Forces()
+    val safety = SafetyController()
 
     var state = RideState.POWER_OFF
         private set
@@ -98,6 +100,48 @@ class RidePlc(val plant: Plant) {
 
     var scanCount = 0L; private set
 
+    // Standard outputs as solved by the logic, before forces.
+    private var gateCmd = false
+    private var restraintCmd = false
+    /** Lift crest hold (train at crest, next block occupied); exposed for the ladder view. */
+    var liftCrestHold = false; private set
+    private var safeStdT = 0.0
+    /** Manual station departure permitted: checks were made at the stop and RELEASE is still held. */
+    private var manualDepart = false
+
+    // ---------- Input image (forces override field values) ----------
+    private val entryTag = Array(n) { "${profile.blocks[it].tag}_PX_ENTRY" }
+    private val brkClTag = Array(n) { "${profile.blocks[it].tag}_BRK_CLOSED_PX" }
+    private val brkOpTag = Array(n) { "${profile.blocks[it].tag}_BRK_OPEN_PX" }
+    private val brkSolTag = Array(n) { "${profile.blocks[it].tag}_BRK_SOL" }
+    private val tiresTag = Array(n) { "${profile.blocks[it].tag}_DRIVE_TIRES" }
+    private fun fx(tag: String, raw: Boolean) = forces[tag] ?: raw
+    fun entry(b: Int) = fx(entryTag[b], plant.entrySensor(b))
+    fun brkOpenPx(b: Int) = fx(brkOpTag[b], plant.brakes[b].openProx)
+    fun brkClosedPx(b: Int) = fx(brkClTag[b], plant.brakes[b].closedProx)
+    fun rowLocked(r: Int) = fx("ROW${r + 1}_LOCKED_LS", plant.rowLockSensor(r))
+    val gatesClosed get() = fx("GATES_CLOSED_LS", plant.gateClosedSensor)
+    val airOk get() = fx("AIR_PRESS_SW", plant.airPsi >= 75)
+    val crestPx get() = fx("LIFT_CREST_PX", plant.bodyAt(profile.liftCrestSensor))
+    val lsmReady get() = fx("LSM_DRIVE_READY", !plant.faults.lsmFault)
+    val estopPbOk get() = fx("ESTOP_PB_NC", !inputs.estopPressed)
+    val loadEstopOk get() = fx("LOAD_STAND_ESTOP_NC", !inputs.loadStandEstop)
+    val unloadEstopOk get() = fx("UNLOAD_STAND_ESTOP_NC", !inputs.unloadStandEstop)
+    val remoteEstopOk get() = fx("REMOTE_ESTOP_OK", !plant.faults.safetyCircuit)
+
+    /** Install (true/false) or remove (null) a force, logged like Logix does. */
+    fun force(tag: String, v: Boolean?) {
+        if (forces[tag] == v) return
+        forces[tag] = v
+        alarms.info("FORCE", if (v == null) "Force removed: $tag" else "Force installed: $tag = ${if (v) 1 else 0}")
+    }
+
+    fun removeAllForces() {
+        if (!forces.any) return
+        forces.clear()
+        alarms.info("FORCE", "All I/O forces removed")
+    }
+
     /** Two-tone "clear the track" warning, seconds remaining. */
     private var trackClearT = 0.0
     val trackClearActive get() = powered && trackClearT > 0
@@ -120,11 +164,11 @@ class RidePlc(val plant: Plant) {
     val powered get() = state != RideState.POWER_OFF
     val eStopped get() = state == RideState.ESTOP
     fun next(i: Int) = (i + 1) % n
-    fun nextClear(i: Int) = occ[next(i)] == -1 && !plant.entrySensor(next(i))
+    fun nextClear(i: Int) = occ[next(i)] == -1 && !entry(next(i))
     fun trainSpeed(id: Int) = plant.trains.firstOrNull { it.id == id }?.v ?: 0.0
 
     val trainInStation get() = occ[0] != -1 && plant.stationTrain() != null
-    val allRowsLocked get() = (0 until profile.rows).all { plant.rowLockSensor(it) }
+    val allRowsLocked get() = (0 until profile.rows).all { rowLocked(it) }
     val hornActive get() = powered && alarms.hornDemand
     val resetNeeded get() = alarms.active.any { !it.condition } || (eStopped && !inputs.anyEstop)
 
@@ -134,7 +178,32 @@ class RidePlc(val plant: Plant) {
     val lastInterval: Double? get() = if (dispatchTimes.size >= 2) dispatchTimes.last() - dispatchTimes[dispatchTimes.size - 2] else null
     val avgInterval: Double? get() = if (dispatchTimes.size >= 2) (dispatchTimes.last() - dispatchTimes.first()) / (dispatchTimes.size - 1) else null
 
+    /** One controller scan: standard task, then the safety task, then outputs (with forces) to the field. */
     fun scan(dt: Double) {
+        standardTask(dt)
+        val f = plant.faults
+        safety.scan(
+            dt, booleanArrayOf(inputs.estopPressed, inputs.loadStandEstop, inputs.unloadStandEstop, f.safetyCircuit),
+            f.estopWeldedB, f.safetyIoFault, reset = inputs.faultReset || inputs.powerOn,
+            stopRequest = state == RideState.ESTOP || !powered,
+        )
+        plant.safetyPower = safety.outputsOn
+        writeOutputs()
+    }
+
+    private fun writeOutputs() {
+        for (b in 0 until n) {
+            plant.brakes[b].cmdOpen = forces[brkSolTag[b]] ?: plant.brakes[b].cmdOpen
+            plant.tiresCmd[b] = forces[tiresTag[b]] ?: plant.tiresCmd[b]
+        }
+        plant.liftRunCmd = forces["LIFT_VFD_RUN"] ?: plant.liftRunCmd
+        plant.lsmFireCmd = forces["LSM_FIRE"] ?: plant.lsmFireCmd
+        plant.lsmPositionCmd = forces["LSM_POSITION"] ?: plant.lsmPositionCmd
+        plant.gatesOpenCmd = forces["GATE_OPEN_SOL"] ?: gateCmd
+        plant.restraintUnlockCmd = forces["RESTR_UNLOCK_SOL"] ?: restraintCmd
+    }
+
+    private fun standardTask(dt: Double) {
         t += dt
         stateT += dt
         scanCount++
@@ -165,7 +234,7 @@ class RidePlc(val plant: Plant) {
 
         // ---------- Block tracking ----------
         for (b in 0 until n) {
-            val s = plant.entrySensor(b)
+            val s = entry(b)
             if (s && !prevSensor[b]) onEntry(b)
             if (!s && prevSensor[b]) onCleared(b)
             prevSensor[b] = s
@@ -173,27 +242,34 @@ class RidePlc(val plant: Plant) {
 
         // ---------- Fault conditions ----------
         val f = plant.faults
-        alarms.condition("ESTOP_PB", "Operator console E-Stop actuated", Severity.ESTOP, i.estopPressed)
-        alarms.condition("ESTOP_LOAD", "Load stand E-Stop actuated", Severity.ESTOP, i.loadStandEstop)
-        alarms.condition("ESTOP_UNLOAD", "Unload stand E-Stop actuated", Severity.ESTOP, i.unloadStandEstop)
-        alarms.condition("SAFETY", "Safety relay MSR1: remote E-Stop chain open", Severity.ESTOP, f.safetyCircuit)
-        alarms.condition("AIR", "Main air pressure low (${plant.airPsi.toInt()} psi)", Severity.CSTOP, plant.airPsi < 75)
+        alarms.condition("ESTOP_PB", "Operator console E-Stop actuated", Severity.ESTOP, !estopPbOk)
+        alarms.condition("ESTOP_LOAD", "Load stand E-Stop actuated", Severity.ESTOP, !loadEstopOk)
+        alarms.condition("ESTOP_UNLOAD", "Unload stand E-Stop actuated", Severity.ESTOP, !unloadEstopOk)
+        alarms.condition("SAFETY", "Safety relay MSR1: remote E-Stop chain open", Severity.ESTOP, !remoteEstopOk)
+        alarms.condition("AIR", "Main air pressure low (${plant.airPsi.toInt()} psi)", Severity.CSTOP, !airOk)
         if (profile.type == ProfileType.LIFT) {
-            alarms.condition("LIFT_VFD", "Lift VFD faulted – F0005 DC bus overvoltage", Severity.CSTOP, f.liftVfd)
-            alarms.condition("LIFT_OL", "Lift motor overload relay OL1 tripped", Severity.CSTOP, f.liftOverload)
+            alarms.condition("LIFT_VFD", "Lift VFD faulted – F0005 DC bus overvoltage", Severity.CSTOP, !fx("LIFT_VFD_READY", !f.liftVfd))
+            alarms.condition("LIFT_OL", "Lift motor overload relay OL1 tripped", Severity.CSTOP, !fx("LIFT_OL1_OK", !f.liftOverload))
         } else {
-            alarms.condition("LSM", "LSM drive fault – launch inhibited", Severity.CSTOP, f.lsmFault)
+            alarms.condition("LSM", "LSM drive fault – launch inhibited", Severity.CSTOP, !lsmReady)
         }
+        // Safety task status, read back by the standard task.
+        val disc = safety.stations.indices.filter { safety.discrepancy[it] }.joinToString { safety.stations[it] }
+        alarms.condition("SAFE_DISC", "Safety: E-Stop channel A/B discrepancy – $disc", Severity.ESTOP, safety.anyDiscrepancy)
+        alarms.condition("SAFE_IO", "Safety: 1756-IB16S safety input module connection faulted", Severity.ESTOP, safety.ioFault)
+        val mismatch = safety.tripped && state != RideState.ESTOP && !safety.anyDiscrepancy && !safety.ioFault
+        safeStdT = if (mismatch) safeStdT + dt else 0.0
+        if (safeStdT > 1.0) alarms.raise("SAFE_STD", "Safety/standard discrepancy – safety outputs OFF, standard task not stopped", Severity.ESTOP)
         if (plant.collision) alarms.raise("COLLIDE", "Train spacing violation – contact detected", Severity.ESTOP)
 
         for (b in 0 until n) {
             val brk = plant.brakes[b]
-            val mismatch = (brk.cmdOpen && !brk.openProx) || (!brk.cmdOpen && !brk.closedProx)
+            val mismatch = (brk.cmdOpen && !brkOpenPx(b)) || (!brk.cmdOpen && !brkClosedPx(b))
             brakeMismatchT[b] = if (mismatch) brakeMismatchT[b] + dt else 0.0
             val blk = profile.blocks[b]
             if (blk.stopPos != null) {
                 val txt = "${blk.tag} brake position fault – cmd ${if (brk.cmdOpen) "OPEN" else "CLOSED"}, " +
-                    "feedback ${if (brk.openProx) "OPEN" else if (brk.closedProx) "CLOSED" else "MID"}"
+                    "feedback ${if (brkOpenPx(b)) "OPEN" else if (brkClosedPx(b)) "CLOSED" else "MID"}"
                 alarms.condition("BRK$b", txt, Severity.ESTOP, brakeMismatchT[b] > 1.2)
             }
             // Stall / valley detection via block speed sensors.
@@ -207,11 +283,11 @@ class RidePlc(val plant: Plant) {
 
         val stTrain = plant.stationTrain()
         for (r in 0 until profile.rows) {
-            val bad = stTrain != null && !plant.restraintUnlockCmd && !plant.rowLockSensor(r)
+            val bad = stTrain != null && !restraintCmd && !rowLocked(r)
             rowFaultT[r] = if (bad) rowFaultT[r] + dt else 0.0
             alarms.condition("ROW$r", "Station: row ${r + 1} restraint not locked", Severity.WARNING, rowFaultT[r] > 2.5)
         }
-        gateFaultT = if (!plant.gatesOpenCmd && !plant.gateClosedSensor) gateFaultT + dt else 0.0
+        gateFaultT = if (!gateCmd && !gatesClosed) gateFaultT + dt else 0.0
         alarms.condition("GATE", "Station air gates – closed switch not made", Severity.WARNING, gateFaultT > 3.0)
 
 
@@ -268,22 +344,22 @@ class RidePlc(val plant: Plant) {
         val inStation = trainInStation
         if (rise("rOpen", i.restraintOpen)) {
             if (inStation && !releaseLatch[0] && !eStopped) {
-                plant.restraintUnlockCmd = true
+                restraintCmd = true
                 loadReady = false; unloadReady = false
             } else alarms.info("STN", "Restraint open refused – no train stopped in station")
         }
-        if (rise("rClose", i.restraintClose)) plant.restraintUnlockCmd = false
+        if (rise("rClose", i.restraintClose)) restraintCmd = false
         if (rise("gOpen", i.gatesOpen)) {
             if (inStation && !releaseLatch[0] && !eStopped) {
-                plant.gatesOpenCmd = true
+                gateCmd = true
                 loadReady = false; unloadReady = false
             } else alarms.info("STN", "Gate open refused – no train stopped in station")
         }
-        if (rise("gClose", i.gatesClose)) plant.gatesOpenCmd = false
+        if (rise("gClose", i.gatesClose)) gateCmd = false
         if (rise("ldRdy", i.loadReady)) loadReady = !loadReady
         if (rise("unRdy", i.unloadReady)) unloadReady = !unloadReady
-        val restraintsOk = allRowsLocked && !plant.restraintUnlockCmd
-        val gatesOk = plant.gateClosedSensor && !plant.gatesOpenCmd
+        val restraintsOk = allRowsLocked && !restraintCmd
+        val gatesOk = gatesClosed && !gateCmd
 
         permissives = listOf(
             Permissive("Key switch in AUTO", m == KeyMode.AUTO),
@@ -295,7 +371,7 @@ class RidePlc(val plant: Plant) {
             Permissive("Load side operator ready", loadReady),
             Permissive("Unload side operator ready", unloadReady),
             Permissive("${profile.blocks[1].tag} ${profile.blocks[1].name} clear", nextClear(0)),
-            Permissive("Air pressure ≥ 75 psi", plant.airPsi >= 75),
+            Permissive("Air pressure ≥ 75 psi", airOk),
         )
         dispatchReady = permissives.all { it.ok } && !releaseLatch[0]
 
@@ -323,6 +399,7 @@ class RidePlc(val plant: Plant) {
 
         // ---------- Block brakes ----------
         val manualOpen = BooleanArray(n)
+        if (!i.manualRelease[0] || occ[0] == -1 || !manualOk) manualDepart = false
         for (b in 0 until n) {
             val blk = profile.blocks[b]
             if (releaseLatch[b] && (occ[next(b)] == latchedTrain[b] || occ[b] == -1)) releaseLatch[b] = false
@@ -335,13 +412,18 @@ class RidePlc(val plant: Plant) {
             ) latch(b)
             if (manualOk && i.manualRelease[b] && occ[b] != -1 && nextClear(b)) {
                 manualOpen[b] = when (blk.kind) {
-                    BlockKind.STATION -> restraintsOk && gatesOk
+                    BlockKind.STATION -> { if (restraintsOk && gatesOk) manualDepart = true; manualDepart }
                     BlockKind.BRAKE_RUN, BlockKind.UNLOAD -> true
                     else -> false
                 }
             }
         }
-        if (eStopped) releaseLatch.fill(false)
+        // An E-Stop cancels releases for trains still at their stop. A train that has already left the stop
+        // keeps its release so it can complete the move after a restart instead of being stranded.
+        if (eStopped) for (b in 0 until n) {
+            if (plant.trainAtStop(b)?.id == occ[b] || occ[b] == -1) releaseLatch[b] = false
+        }
+        val autoRelease = state == RideState.RUNNING || state == RideState.CSTOP
         if (m != KeyMode.MAINT) maintBrakeOpen.fill(false)
 
         for (b in 0 until n) {
@@ -349,7 +431,7 @@ class RidePlc(val plant: Plant) {
             val open = when (blk.kind) {
                 BlockKind.LAUNCH -> launchState == LaunchState.FIRING || launchState == LaunchState.VERIFY
                 BlockKind.LIFT -> false
-                else -> releaseLatch[b] || manualOpen[b]
+                else -> (releaseLatch[b] && autoRelease) || manualOpen[b]
             } || (maint && maintBrakeOpen[b])
             plant.brakes[b].cmdOpen = open && !eStopped && !(b == profile.transferBlock && transferState != TransferState.IDLE)
             plant.tiresCmd[b] = !eStopped
@@ -357,7 +439,8 @@ class RidePlc(val plant: Plant) {
 
         // ---------- Lift ----------
         if (profile.type == ProfileType.LIFT) {
-            val crestHold = plant.bodyAt(profile.liftCrestSensor) && !nextClear(1)
+            val crestHold = crestPx && !nextClear(1)
+            liftCrestHold = crestHold
             plant.liftRunCmd = !eStopped && when {
                 running -> !crestHold
                 state == RideState.CSTOP -> occ[1] != -1 && !crestHold
@@ -399,7 +482,7 @@ class RidePlc(val plant: Plant) {
         val ready = occ[1] != -1 && plant.trainAtStop(1)?.let { abs(it.v) < 0.05 } == true
         if (eStopped && launchState != LaunchState.ROLLBACK) launchState = LaunchState.IDLE
         when (launchState) {
-            LaunchState.IDLE -> if (ready && nextClear(1) && !plant.faults.lsmFault && (running || manualRelease)) {
+            LaunchState.IDLE -> if (ready && nextClear(1) && lsmReady && (running || manualRelease)) {
                 launchState = LaunchState.CHARGING; launchT = 0.0
             }
             LaunchState.CHARGING -> if (launchT > 3.0) {
@@ -511,7 +594,7 @@ class RidePlc(val plant: Plant) {
             val b = profile.blockAt(tr.s).index
             occ[b] = tr.id
         }
-        for (b in 0 until n) prevSensor[b] = plant.entrySensor(b)
+        for (b in 0 until n) prevSensor[b] = entry(b)
     }
 
     private fun setState(s: RideState) {

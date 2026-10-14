@@ -112,7 +112,7 @@ fun PushButton(
                 .pointerInput(Unit) {
                     awaitEachGesture {
                         awaitFirstDown(requireUnconsumed = false)
-                        pressed = true; cb(true)
+                        pressed = true; Haptics.click(); cb(true)
                         waitForUpOrCancellation()
                         pressed = false; cb(false)
                     }
@@ -233,6 +233,7 @@ fun KeySwitch(
                 .size(size)
                 .pointerInput(selected) {
                     detectTapGestures { p ->
+                        Haptics.click()
                         if (p.x < this.size.width / 2) pick((selected - 1).coerceAtLeast(0))
                         else pick((selected + 1).coerceAtMost(positions.size - 1))
                     }

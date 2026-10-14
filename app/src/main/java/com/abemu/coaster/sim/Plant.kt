@@ -37,6 +37,9 @@ class InjectedFaults {
     var restraintRow: Int = -1
     val sensorStuckOff = mutableSetOf<Int>()
     val sensorStuckOn = mutableSetOf<Int>()
+    /** Station index (see [SafetyController.stations]) whose E-Stop channel B is welded closed, or -1. */
+    var estopWeldedB: Int = -1
+    var safetyIoFault = false
 }
 
 /**
@@ -57,6 +60,8 @@ class Plant(val profile: RideProfile, activeTrains: Int, totalTrains: Int = 3) {
     var gatesOpenCmd = false
     var restraintUnlockCmd = false
     var compressorEnabled = true
+    /** Safety output power to brake valves and drive enables (STO). Off = brakes close, drives stop. */
+    var safetyPower = true
 
     // ---- Physical state ----
     var chainSpeed = 0.0
@@ -130,13 +135,13 @@ class Plant(val profile: RideProfile, activeTrains: Int, totalTrains: Int = 3) {
             val target = when {
                 b.stuckOpen -> 1.0
                 b.stuckClosed -> 0.0
-                b.cmdOpen && airPsi > 65.0 -> 1.0
+                b.cmdOpen && safetyPower && airPsi > 65.0 -> 1.0
                 else -> 0.0
             }
             b.openFrac = approach(b.openFrac, target, dt / 0.4)
         }
 
-        val chainTarget = if (liftRunCmd && !faults.liftVfd && !faults.liftOverload) liftChainSpeed else 0.0
+        val chainTarget = if (liftRunCmd && safetyPower && !faults.liftVfd && !faults.liftOverload) liftChainSpeed else 0.0
         chainSpeed = approach(chainSpeed, chainTarget, 2.5 * dt)
 
         gatePos = if (faults.gateStuck) max(gatePos, 0.5)
@@ -172,13 +177,13 @@ class Plant(val profile: RideProfile, activeTrains: Int, totalTrains: Int = 3) {
             }
 
             // LSM launch firing.
-            block.kind == BlockKind.LAUNCH && lsmFireCmd && !faults.lsmFault && t.v >= -0.1 &&
+            block.kind == BlockKind.LAUNCH && lsmFireCmd && safetyPower && !faults.lsmFault && t.v >= -0.1 &&
                 p.inRange(t.s, p.launchStart - 2, p.launchEnd) -> {
                 t.v = min(launchSpeed, t.v + 11.0 * dt)
             }
 
             // LSM positioning: returns a train on the launch track to the launch position.
-            block.kind == BlockKind.LAUNCH && lsmPositionCmd && !faults.lsmFault && !lsmFireCmd &&
+            block.kind == BlockKind.LAUNCH && lsmPositionCmd && safetyPower && !faults.lsmFault && !lsmFireCmd &&
                 p.inRange(t.s, p.launchStart - 10, p.launchEnd) && abs(t.v) < 2.5 -> {
                 val err = signedDist(t.s, p.launchStart)
                 t.v = if (abs(err) < 0.05) 0.0 else (err * 0.8).coerceIn(-1.5, 1.5)
@@ -205,7 +210,7 @@ class Plant(val profile: RideProfile, activeTrains: Int, totalTrains: Int = 3) {
                     val trim = if (block.kind == BlockKind.BRAKE_RUN) 6.0 else 3.0
                     when {
                         // Mid-course LSM launch past the stop point (e.g. a tunnel launch).
-                        block.exitLaunch > 0 && toStop <= 0.5 && !faults.lsmFault ->
+                        block.exitLaunch > 0 && toStop <= 0.5 && safetyPower && !faults.lsmFault ->
                             t.v = min(block.exitLaunch, t.v + 11.0 * dt)
                         t.v > trim -> t.v = max(trim, t.v - 4.0 * dt)
                         tires && t.v < 2.0 -> t.v = min(2.0, t.v + 1.0 * dt)

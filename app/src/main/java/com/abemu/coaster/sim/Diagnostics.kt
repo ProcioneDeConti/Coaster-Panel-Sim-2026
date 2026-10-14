@@ -26,6 +26,18 @@ object Diagnostics {
             listOf("Remote E-Stop in the safety chain opened.", "Safety relay MSR1 input wiring fault or failed contact."),
             listOf("Check all remote E-Stops and access gates on the circuit.", "Check MSR1 diagnostic LEDs and input wiring.", "Reset only after the cause is found."),
         ),
+        "SAFE_DISC" to Diagnosis(
+            listOf("The two channels of a dual-channel E-Stop disagreed for more than 0.5 s.", "Welded or failed contact on one channel, or a wiring fault on one channel."),
+            listOf("Check channel A/B states for the station on the LOGIC › SAFETY screen.", "Repair the contact block or wiring.", "Press and release that E-Stop so both channels open together (clears the latch), then FAULT RESET."),
+        ),
+        "SAFE_IO" to Diagnosis(
+            listOf("The safety input module lost its connection to the GuardLogix controller.", "Module fault, backplane problem, or the module was removed."),
+            listOf("Check the module status LED on the I/O › RACK view.", "Reseat or replace the module.", "Safety outputs stay off until the connection is restored and the fault is reset."),
+        ),
+        "SAFE_STD" to Diagnosis(
+            listOf("The safety task turned its outputs off but the standard task did not stop the ride.", "Usually a forced standard input masking an E-Stop, or a standard logic fault."),
+            listOf("Check for I/O forces (title bar) and remove them.", "Compare the E-Stop inputs on the I/O screen with the safety channels.", "Find the cause before resetting: the standard task was running blind."),
+        ),
         "AIR" to Diagnosis(
             listOf("Air leak (hose, fitting, brake actuator).", "Compressor off, tripped or unloaded.", "Dryer/filter blocked."),
             listOf("Check the compressor is running (Maint page) and the receiver pressure.", "Listen/inspect for leaks at brake actuators and gates.", "Brakes are spring-applied: trains will stop safely, but do not run below 75 psi."),

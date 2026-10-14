@@ -55,35 +55,7 @@ fun OverviewPage(vm: SimViewModel) {
             }
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            HmiFrame("BLOCK STATUS", Modifier.weight(1.6f)) {
-                Row {
-                    listOf("BLOCK" to 1.6f, "STATUS" to 1.1f, "TRAIN" to 0.6f, "BRAKE" to 0.9f, "SPEED" to 0.8f).forEach { (h, w) ->
-                        HmiLabel(h, 10.sp, bold = true, color = Hmi.Dim, modifier = Modifier.weight(w))
-                    }
-                }
-                plc.profile.blocks.forEach { b ->
-                    val id = plc.occ[b.index]
-                    val brk = plc.plant.brakes[b.index]
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        HmiLabel("${b.tag} ${b.name}", 11.sp, modifier = Modifier.weight(1.6f))
-                        Row(Modifier.weight(1.1f), verticalAlignment = Alignment.CenterVertically) {
-                            Indicator(id != -1, Hmi.Bad, Hmi.Ok)
-                            HmiLabel(if (id != -1) " OCCUPIED" else " CLEAR", 11.sp)
-                        }
-                        HmiLabel(if (id != -1) "T$id" else "—", 11.sp, bold = true, modifier = Modifier.weight(0.6f))
-                        HmiLabel(
-                            when {
-                                b.kind == BlockKind.LIFT -> if (plc.plant.chainSpeed > 0.1) "CHAIN RUN" else "CHAIN STOP"
-                                brk.openProx -> "OPEN"
-                                brk.closedProx -> "CLOSED"
-                                else -> "MOVING"
-                            },
-                            11.sp, color = if (brk.isOpen) Hmi.Ok else Hmi.Text, modifier = Modifier.weight(0.9f),
-                        )
-                        HmiLabel(if (id != -1) "%.1f m/s".format(abs(plc.trainSpeed(id))) else "", 11.sp, modifier = Modifier.weight(0.8f))
-                    }
-                }
-            }
+            BlockStatusFrame(plc, Modifier.weight(1.6f))
             HmiFrame("RIDE DATA", Modifier.weight(1f)) {
                 if (plc.profile.type == ProfileType.LIFT) {
                     ValueBox("Lift chain", "%.2f m/s".format(plc.plant.chainSpeed))
@@ -95,6 +67,40 @@ fun OverviewPage(vm: SimViewModel) {
                 ValueBox("Trains (circuit/stor)", "${plc.plant.trains.size} / ${plc.plant.stored}")
                 ValueBox("Dispatches", plc.dispatchCount.toString())
                 ValueBox("PLC scan", "20 ms  #${plc.scanCount % 100000}")
+            }
+        }
+    }
+}
+
+/** Per-block occupancy, train, brake and speed table. */
+@Composable
+fun BlockStatusFrame(plc: com.abemu.coaster.sim.RidePlc, modifier: Modifier = Modifier) {
+    HmiFrame("BLOCK STATUS", modifier) {
+        Row {
+            listOf("BLOCK" to 1.6f, "STATUS" to 1.1f, "TRAIN" to 0.6f, "BRAKE" to 0.9f, "SPEED" to 0.8f).forEach { (h, w) ->
+                HmiLabel(h, 10.sp, bold = true, color = Hmi.Dim, modifier = Modifier.weight(w))
+            }
+        }
+        plc.profile.blocks.forEach { b ->
+            val id = plc.occ[b.index]
+            val brk = plc.plant.brakes[b.index]
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                HmiLabel("${b.tag} ${b.name}", 11.sp, modifier = Modifier.weight(1.6f))
+                Row(Modifier.weight(1.1f), verticalAlignment = Alignment.CenterVertically) {
+                    Indicator(id != -1, Hmi.Bad, Hmi.Ok)
+                    HmiLabel(if (id != -1) " OCCUPIED" else " CLEAR", 11.sp)
+                }
+                HmiLabel(if (id != -1) "T$id" else "—", 11.sp, bold = true, modifier = Modifier.weight(0.6f))
+                HmiLabel(
+                    when {
+                        b.kind == BlockKind.LIFT -> if (plc.plant.chainSpeed > 0.1) "CHAIN RUN" else "CHAIN STOP"
+                        brk.openProx -> "OPEN"
+                        brk.closedProx -> "CLOSED"
+                        else -> "MOVING"
+                    },
+                    11.sp, color = if (brk.isOpen) Hmi.Ok else Hmi.Text, modifier = Modifier.weight(0.9f),
+                )
+                HmiLabel(if (id != -1) "%.1f m/s".format(abs(plc.trainSpeed(id))) else "", 11.sp, modifier = Modifier.weight(0.8f))
             }
         }
     }
