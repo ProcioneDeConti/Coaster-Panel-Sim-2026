@@ -74,7 +74,8 @@ class SimViewModel : ViewModel() {
     fun reconfigure(id: String = coasterId, trains: Int = trainCount): Boolean {
         if (plc.state != RideState.POWER_OFF) return false
         val old = plc.inputs
-        val fresh = build(id, trains)
+        val maxTrains = RideProfile.create(CoasterLibrary.byId(id)).initialStops.size.coerceAtMost(3)
+        val fresh = build(id, trains.coerceAtMost(maxTrains))
         fresh.inputs.mode = old.mode
         fresh.inputs.estopPressed = old.estopPressed
         fresh.inputs.singleButtonDispatch = old.singleButtonDispatch
@@ -82,7 +83,7 @@ class SimViewModel : ViewModel() {
         fresh.inputs.unloadStandEstop = old.unloadStandEstop
         fresh.dispatchTarget = plc.dispatchTarget
         coasterId = id
-        trainCount = trains
+        trainCount = trains.coerceAtMost(maxTrains)
         plc = fresh
         trends.clear()
         return true

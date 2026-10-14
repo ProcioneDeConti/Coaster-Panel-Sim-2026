@@ -82,9 +82,9 @@ object CoasterLibrary {
 
         // ---------------- LSM launch ----------------
         CoasterSpec("tt2", "Top Thrill 2", ProfileType.LAUNCH, 125.0, launchSpeed = 54.0,
-            hills1 = listOf(0.3), mcbrFrac = 0.25, hills2 = listOf(0.5, 0.35),
+            hills1 = emptyList(), mcbrFrac = 0.25, hills2 = emptyList(), hasMcbr = false,
             cars = 4, ridersPerCar = 4, layout = 1, seed = 30, park = "Cedar Point",
-            note = "Simplified: the real ride uses a forward-backward-forward launch and returns over the top hat; modelled here as one launch to a 125 m top hat."),
+            note = "Blocks: station, launch / top hat, brake run back to the station (via the transfer track to the launch). Simplified: the real forward-backward-forward launch is modelled as one launch to the 125 m top hat."),
         CoasterSpec("quantum", "Quantum", ProfileType.LAUNCH, 14.0, launchSpeed = 20.0,
             hills1 = listOf(0.5, 0.4), mcbrFrac = 0.45, hills2 = listOf(0.45),
             cars = 4, ridersPerCar = 4, layout = 0, seed = 3, note = "Family launch coaster."),
@@ -108,7 +108,21 @@ object CoasterLibrary {
     fun byId(id: String) = all.first { it.id == id }
     fun default(type: ProfileType) = if (type == ProfileType.LIFT) byId("cyclone") else byId("stormchaser")
 
+    /**
+     * Build a ride. For coasters with a real (OSM) layout, the free-running course is stretched so
+     * the simulated circuit matches the real track length.
+     */
     fun build(spec: CoasterSpec): RideProfile {
+        val real = RealLayouts.byId[spec.id] ?: return build(spec, 1.0)
+        val l1 = build(spec, 1.0).length
+        val l2 = build(spec, 2.0).length
+        val perK = (l2 - l1).coerceAtLeast(1.0)
+        val k = (1.0 + (real.osmLengthM - l1) / perK).coerceIn(0.4, 6.0)
+        return build(spec, k)
+    }
+
+    /** @param k multiplier on course run lengths (hill spacing, approaches). */
+    private fun build(spec: CoasterSpec, k: Double): RideProfile {
         val e = mutableListOf(0.0 to 2.0)
         var s = 0.0
         fun to(ds: Double, h: Double) { s += ds; e += s to h }
@@ -164,7 +178,7 @@ object CoasterLibrary {
             val room = avail1() - 4 - 9
             if (room < 2) continue
             val h = 4 + f * room
-            val run = (h - 4) * 1.2 + 18
+            val run = ((h - 4) * 1.2 + 18) * k
             to(run, h); to(run, 4.0)
         }
         var c2 = topS
@@ -172,9 +186,9 @@ object CoasterLibrary {
         if (spec.hasMcbr && spec.tunnelLaunch > 0) {
             // Low tunnel block: brake to a stop, then a second LSM launch out of the block.
             val tunnelH = 3.0
-            to(30.0, tunnelH)
+            to(30.0 * k, tunnelH)
             val v2 = 2 * G * maxOf(4.0, avail1() - tunnelH)
-            val bl1 = (v2 / 10 + 15).coerceIn(45.0, 150.0)
+            val bl1 = (v2 / 10 + 15).coerceIn(45.0, 300.0)
             val flat = s
             to(bl1 + 5, tunnelH)
             val stop = s
@@ -186,16 +200,16 @@ object CoasterLibrary {
             head2 = tunnelH + spec.tunnelLaunch * spec.tunnelLaunch / (2 * G)
         } else if (spec.hasMcbr) {
             val mcbrH = 4 + spec.mcbrFrac * maxOf(0.0, avail1() - 13)
-            to((mcbrH - 4) * 1.3 + 20, mcbrH)
+            to(((mcbrH - 4) * 1.3 + 20) * k, mcbrH)
             val v2 = 2 * G * maxOf(4.0, avail1() - mcbrH)
-            val bl1 = (v2 / 10 + 15).coerceIn(45.0, 150.0)
+            val bl1 = (v2 / 10 + 15).coerceIn(45.0, 300.0)
             val mcbrFlat = s
             to(bl1 + 10, mcbrH)
             blocks += Block(blocks.size + 1, nextTag(), "Mid-Course Brake", BlockKind.BRAKE_RUN, blocks.last().end, s, s - 5, mcbrFlat + 5)
             c2 = s
-            head2 = mcbrH + 1.0
+            head2 = mcbrH + 0.2 // worst case: leaves the MCBR from a stop on the drive tires (2 m/s)
             to(8.0, mcbrH - 0.5)
-            to((mcbrH - 2) * 1.3 + 10, 2.0)
+            to(((mcbrH - 2) * 1.3 + 10) * k, 2.0)
         }
 
         // ---- Course 2 → final brakes ----
@@ -204,14 +218,17 @@ object CoasterLibrary {
             val room = avail2() - 2 - 5
             if (room < 1.5) continue
             val h = 2 + f * room
-            val run = (h - 2) * 1.3 + 15
+            val run = ((h - 2) * 1.3 + 15) * k
             to(run, h); to(run, 2.5)
         }
-        to(25.0, 3.0)
-        val v3 = 2 * G * maxOf(4.0, avail2() - 3)
-        val bl2 = (v3 / 10 + 15).coerceIn(45.0, 150.0)
+        // Run-out to the final brakes on a gentle downgrade so a slow train still rolls in.
+        val runLen = 20.0 * k + 25.0
+        val finalH = maxOf(0.5, minOf(3.0, e.last().second - 0.008 * runLen))
+        to(runLen, finalH)
+        val v3 = 2 * G * maxOf(4.0, avail2() - finalH)
+        val bl2 = (v3 / 10 + 15).coerceIn(45.0, 300.0)
         val finalFlat = s
-        to(bl2 + 10, 3.0)
+        to(bl2 + 10, finalH)
         val finalName = when {
             !spec.hasMcbr -> "Main Course / Final Brake"
             spec.unloadStation -> "Final Brake"
@@ -222,7 +239,7 @@ object CoasterLibrary {
         // ---- Separate unload station ----
         if (spec.unloadStation) {
             val u0 = s
-            to(spec.cars * 2.0 + 18, 3.0)
+            to(spec.cars * 2.0 + 18, finalH)
             blocks += Block(blocks.size + 1, nextTag(), "Unload Station", BlockKind.UNLOAD, u0, s, s - 6, u0)
         }
         val stationStart = s

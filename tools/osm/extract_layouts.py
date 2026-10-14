@@ -43,7 +43,9 @@ def chain(wids):
             if sg[0] == loop[0]: loop = sg[::-1][:-1] + loop; segs.pop(i); break
         else: raise SystemExit('could not chain')
     if loop[0] == loop[-1]: return loop[:-1]
-    return loop + loop[-2:0:-1]  # open track: out and back
+    # Ends close together: a circuit with an unmapped gap (usually through the station). Close it.
+    if math.dist(xy(loop[0]), xy(loop[-1])) < 150: return loop
+    return loop + loop[-2:0:-1]  # genuinely open track: out and back
 
 def forward(loop, wids):
     pos = {n: i for i, n in enumerate(loop)}; v = 0

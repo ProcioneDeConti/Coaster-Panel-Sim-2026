@@ -27,7 +27,7 @@ class RideCycleTest {
             val p = plc.profile
             val perBlock = plc.plant.trains.groupBy { p.blockAt(it.s).index }
             perBlock.forEach { (b, ts) ->
-                assertTrue("${p.name}: ${ts.size} trains in ${p.blocks[b].tag} ${p.blocks[b].name}", ts.size <= 1)
+                assertTrue("${p.name}: ${ts.size} trains in ${p.blocks[b].tag} ${p.blocks[b].name} " + plc.plant.trains.map { "${it.id}@${"%.1f".format(it.s)}/${"%.2f".format(it.v)}" } + " L=${"%.0f".format(p.length)} blocks=" + p.blocks.map { "${it.tag}:${it.start.toInt()}-${it.end.toInt()}" } + " launch=${plc.launchState}", ts.size <= 1)
             }
         }
     }

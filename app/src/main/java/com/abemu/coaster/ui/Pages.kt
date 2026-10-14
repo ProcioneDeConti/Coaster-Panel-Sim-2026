@@ -410,7 +410,7 @@ fun SimPage(vm: SimViewModel, onOpenEditor: () -> Unit) {
                 HmiButton("OPEN TRACK EDITOR (DEV)", Modifier.fillMaxWidth(), activeColor = Hmi.Info) { onOpenEditor() }
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                     HmiLabel("Trains", 11.sp, modifier = Modifier.width(90.dp))
-                    (1..3).forEach { n ->
+                    (1..vm.plc.profile.initialStops.size.coerceAtMost(3)).forEach { n ->
                         HmiButton("$n", enabled = off, active = vm.trainCount == n, activeColor = Hmi.Info) { vm.reconfigure(trains = n) }
                     }
                 }
