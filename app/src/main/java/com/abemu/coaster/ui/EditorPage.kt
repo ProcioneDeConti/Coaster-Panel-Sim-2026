@@ -194,6 +194,16 @@ fun EditorPage(vm: SimViewModel, onClose: () -> Unit) {
                         tags.clear(); persist(); msg = "All tags deleted."
                     }
                 }
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    HmiButton(if (vm.useTags) "TAGS: USED" else "TAGS: IGNORED", Modifier.weight(1f), active = vm.useTags) {
+                        vm.useTags = !vm.useTags
+                        msg = if (vm.reconfigure()) "Ride rebuilt." else "Setting saved; turn ride power off and press APPLY."
+                    }
+                    HmiButton("APPLY TO RIDE", Modifier.weight(1f), activeColor = Hmi.Info) {
+                        msg = if (vm.reconfigure()) "Ride rebuilt from tags." else "Turn ride power off first."
+                    }
+                }
+                vm.tagReport.forEach { HmiLabel("• $it", 10.sp) }
             }
         }
     }

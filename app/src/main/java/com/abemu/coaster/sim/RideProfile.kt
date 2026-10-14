@@ -42,6 +42,8 @@ class RideProfile(
     val crestSensor: Double = 0.0,
     /** Speed that only reaches ~80 % of the top hat, used by the "launch underspeed" fault. */
     val rollbackSpeed: Double = 0.0,
+    /** Transfer block set by an editor tag, else the last brake run. */
+    private val transferOverride: Int? = null,
 ) {
     val type get() = spec.type
     val name get() = spec.name
@@ -80,7 +82,7 @@ class RideProfile(
     fun blockAt(s: Double): Block = blocks.first { inRange(s, it.start, it.end) }
 
     /** Block holding the transfer track: the last brake run before the station(s). */
-    val transferBlock: Int get() = blocks.last { it.kind == BlockKind.BRAKE_RUN }.index
+    val transferBlock: Int get() = transferOverride ?: blocks.last { it.kind == BlockKind.BRAKE_RUN }.index
 
     /** Where trains sit at power-up: load station first, then working back from the station. */
     val initialStops: List<Double>
@@ -110,6 +112,12 @@ class RideProfile(
             0.5 * (2 * v1 + (-v0 + v2) * t + (2 * v0 - 5 * v1 + 4 * v2 - v3) * t * t + (-v0 + 3 * v1 - 3 * v2 + v3) * t * t * t)
         return cr(p0.second, a.second, b.second, p3.second) to cr(p0.third, a.third, b.third, p3.third)
     }
+
+    /** Same track with a different block layout (used by editor tags). */
+    fun withBlocks(blocks: List<Block>, transfer: Int? = null, elevation: List<Pair<Double, Double>>? = null) = RideProfile(
+        spec, length, elevation ?: this.elevation, blocks, plan, liftStart, liftEnd, liftCrestSensor,
+        launchStart, launchEnd, crestSensor, rollbackSpeed, transfer,
+    )
 
     companion object {
         fun create(spec: CoasterSpec): RideProfile = CoasterLibrary.build(spec)

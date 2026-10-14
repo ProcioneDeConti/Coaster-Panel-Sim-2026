@@ -3,6 +3,8 @@
 import com.abemu.coaster.sim.CoasterLibrary
 import com.abemu.coaster.sim.CoasterSpec
 import com.abemu.coaster.sim.KeyMode
+import com.abemu.coaster.sim.LayoutTag
+import com.abemu.coaster.sim.TagLayout
 import com.abemu.coaster.sim.Plant
 import com.abemu.coaster.sim.ProfileType
 import com.abemu.coaster.sim.RidePlc
@@ -32,6 +34,34 @@ class RideCycleTest {
         }
     }
 
+    /** A 50 m block brake tag part-way along the free-running course. */
+    private fun midCourseBrake(p: RideProfile, frac: Double): LayoutTag {
+        val a = p.blocks[1].end + frac * (p.blocks[p.transferBlock].brakeStart!! - p.blocks[1].end)
+        return LayoutTag("BLOCK_BRAKE", a / p.length, (a + 50) / p.length, "Tagged MCBR")
+    }
+
+    @Test fun tagsAddCourseBrake() {
+        var applied = 0
+        for (spec in CoasterLibrary.all.filter { it.tunnelLaunch == 0.0 }) {
+            val base = RideProfile.create(spec)
+            val r = TagLayout.apply(base, listOf(midCourseBrake(base, 0.4), LayoutTag("LIFT", 0.02, 0.02, "Chain")))
+            val b = r.profile.blocks.firstOrNull { it.name == "Tagged MCBR" } ?: continue
+            applied++
+            assertEquals(spec.name, "B3", b.tag)
+            // Levelled through the brake.
+            assertEquals(spec.name, r.profile.height(b.brakeStart!!), r.profile.height(b.stopPos!!), 0.01)
+            if (applied <= 4) runCycles(r.profile, 3, 6, NOOP)
+        }
+        assertTrue("only $applied rides took a mid-course tag", applied >= 4)
+    }
+
+    @Test fun tagsOutsideCourseKeepGenerated() {
+        val base = RideProfile.create(CoasterLibrary.byId("millennium"))
+        val r = TagLayout.apply(base, listOf(LayoutTag("BLOCK_BRAKE", 10 / base.length, 40 / base.length)))
+        assertEquals(base.blocks.map { it.name }, r.profile.blocks.map { it.name })
+        assertTrue(r.report.toString(), r.report.single().contains("skipped"))
+    }
+
     @Test fun millenniumForceBlocks() {
         val p = RideProfile.create(CoasterLibrary.byId("millennium"))
         assertEquals(listOf("Load Station", "Lift Hill", "Main Course / Final Brake", "Unload Station"), p.blocks.map { it.name })
@@ -41,8 +71,11 @@ class RideCycleTest {
     private fun runCycles(type: ProfileType, trains: Int, dispatches: Int, configure: (RidePlc) -> Unit = {}): RidePlc =
         runCycles(CoasterLibrary.default(type), trains, dispatches, configure)
 
-    private fun runCycles(spec: CoasterSpec, trains: Int, dispatches: Int, configure: (RidePlc) -> Unit = {}): RidePlc {
-        val plc = RidePlc(Plant(RideProfile.create(spec), trains))
+    private fun runCycles(spec: CoasterSpec, trains: Int, dispatches: Int, configure: (RidePlc) -> Unit = {}): RidePlc =
+        runCycles(RideProfile.create(spec), trains, dispatches, configure)
+
+    private fun runCycles(profile: RideProfile, trains: Int, dispatches: Int, configure: (RidePlc) -> Unit = {}): RidePlc {
+        val plc = RidePlc(Plant(profile, trains))
         configure(plc)
         plc.inputs.mode = KeyMode.AUTO
         press(plc) { plc.inputs.powerOn = it }
@@ -78,11 +111,11 @@ class RideCycleTest {
             maxV = maxOf(maxV, plc.plant.trains.maxOf { it.v })
             val bad = plc.alarms.active.filter { it.severity.ordinal <= Severity.CSTOP.ordinal }
             if (bad.isNotEmpty() && configure === NOOP) {
-                throw AssertionError("${spec.name}: alarms: " + bad.map { it.text } + " trains=" +
+                throw AssertionError("${profile.name}: alarms: " + bad.map { it.text } + " trains=" +
                     plc.plant.trains.map { "${it.id}@${"%.1f".format(it.s)}/${"%.2f".format(it.v)}" })
             }
         }
-        println("${spec.name} x$trains: $done dispatches, max speed ${"%.1f".format(maxV)} m/s, t=$guard")
+        println("${profile.name} x$trains: $done dispatches, max speed ${"%.1f".format(maxV)} m/s, t=$guard")
         return plc
     }
 

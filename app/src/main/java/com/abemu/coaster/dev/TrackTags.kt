@@ -2,6 +2,7 @@ package com.abemu.coaster.dev
 
 import android.content.Context
 import androidx.compose.ui.graphics.Color
+import com.abemu.coaster.sim.LayoutTag
 import com.abemu.coaster.sim.RideProfile
 import org.json.JSONArray
 import org.json.JSONObject
@@ -60,6 +61,10 @@ object TagStore {
             (0 until arr.length()).map { fromJson(arr.getJSONObject(it)) }
         }.getOrDefault(emptyList())
     }
+
+    /** Tags in the generator's form (circuit fractions). */
+    fun loadLayout(ctx: Context, coasterId: String) =
+        load(ctx, coasterId).map { LayoutTag(it.type.name, it.fStart, it.fEnd, it.name) }
 
     fun save(ctx: Context, coasterId: String, profile: RideProfile, tags: List<TrackTag>) {
         File(dir(ctx), "$coasterId.json").writeText(toJson(coasterId, profile, tags).toString(2))

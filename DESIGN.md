@@ -66,7 +66,17 @@ top-down layouts from OpenStreetMap (`roller_coaster=track` / `roller_coaster=st
 
 Instructor → OPEN TRACK EDITOR. Tap the plan view to mark stations, lifts, launches, brakes,
 tunnels, transfer, block boundaries and sensors. Tags are stored per coaster and exported as JSON
-(app external files dir, `tags/<id>.json`). Next step: feed tags into the generator.
+(app external files dir, `tags/<id>.json`).
+
+Tags feed the generator (`sim/TagLayout.kt`) when the ride is built (APPLY TO RIDE, power off):
+* Block brake / tunnel tags in the free-running course replace the generated MCBR. The tagged span
+  is levelled at a height the train can reach, and later hills are trimmed so a train leaving the
+  stop off the drive tires still makes the final brake. Tags that can't work are rejected.
+* Block boundaries move a block's end between its stop point and the next brake.
+* Transfer tags move the transfer table to that brake run; station/lift/launch tags rename blocks.
+* A generated tunnel launch is kept, and tags may only go before it. Trim brakes and sensors are
+  informational for now.
+The editor lists what happened to each tag; TAGS: USED/IGNORED switches back to the pure generator.
 
 ## Sound
 
