@@ -151,7 +151,7 @@ private fun TitleBar(vm: SimViewModel, page: HmiPage) {
 @Composable
 private fun AlarmBanner(vm: SimViewModel, onClick: () -> Unit) {
     val plc = vm.plc
-    val top = plc.alarms.active.firstOrNull()
+    val top = plc.alarms.firstOut ?: plc.alarms.active.firstOrNull()
     val blink = flasher()
     val (bg, txt) = when {
         top == null -> Color(0xFFBFC4C9) to Hmi.Dim
@@ -167,7 +167,8 @@ private fun AlarmBanner(vm: SimViewModel, onClick: () -> Unit) {
             Text(plc.statusText.ifEmpty { "No active alarms" }, color = txt, fontSize = 12.sp, maxLines = 1)
         } else {
             Text(top.since, color = txt, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
-            Text("  ${top.severity.label}  ", color = txt, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            val fo = if (plc.alarms.isFirstOut(top)) "1ST OUT · " else ""
+            Text("  $fo${top.severity.label}  ", color = txt, fontSize = 12.sp, fontWeight = FontWeight.Bold)
             Text(top.text, color = txt, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
             val n = plc.alarms.active.size
             if (n > 1) Text("+${n - 1} more", color = txt, fontSize = 11.sp)

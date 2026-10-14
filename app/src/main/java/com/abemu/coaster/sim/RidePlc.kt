@@ -22,6 +22,9 @@ enum class TransferState(val label: String) {
 class Inputs(blocks: Int) {
     var mode = KeyMode.OFF
     var estopPressed = false
+    var loadStandEstop = false
+    var unloadStandEstop = false
+    val anyEstop get() = estopPressed || loadStandEstop || unloadStandEstop
     var powerOn = false
     var powerOff = false
     var rideStart = false
@@ -120,7 +123,13 @@ class RidePlc(val plant: Plant) {
     val trainInStation get() = occ[0] != -1 && plant.stationTrain() != null
     val allRowsLocked get() = (0 until profile.rows).all { plant.rowLockSensor(it) }
     val hornActive get() = powered && alarms.hornDemand
-    val resetNeeded get() = alarms.active.any { !it.condition } || (eStopped && !inputs.estopPressed)
+    val resetNeeded get() = alarms.active.any { !it.condition } || (eStopped && !inputs.anyEstop)
+
+    /** Target dispatch interval for the operator timer, seconds. */
+    var dispatchTarget = 45.0
+    val sinceDispatch: Double? get() = dispatchTimes.lastOrNull()?.let { t - it }
+    val lastInterval: Double? get() = if (dispatchTimes.size >= 2) dispatchTimes.last() - dispatchTimes[dispatchTimes.size - 2] else null
+    val avgInterval: Double? get() = if (dispatchTimes.size >= 2) (dispatchTimes.last() - dispatchTimes.first()) / (dispatchTimes.size - 1) else null
 
     fun scan(dt: Double) {
         t += dt
@@ -136,7 +145,7 @@ class RidePlc(val plant: Plant) {
         } else if (rise("pwrOn", i.powerOn) && state == RideState.POWER_OFF) {
             alarms.info("PWR", "Ride power ON – block tracking verified")
             resyncTracking()
-            setState(if (i.estopPressed) RideState.ESTOP else RideState.STOPPED)
+            setState(if (i.anyEstop) RideState.ESTOP else RideState.STOPPED)
         }
         trackClearT = (trackClearT - dt).coerceAtLeast(0.0)
         if (powered && (m == KeyMode.MANUAL) != (lastMode == KeyMode.MANUAL)) {
@@ -162,6 +171,8 @@ class RidePlc(val plant: Plant) {
         // ---------- Fault conditions ----------
         val f = plant.faults
         alarms.condition("ESTOP_PB", "Operator console E-Stop actuated", Severity.ESTOP, i.estopPressed)
+        alarms.condition("ESTOP_LOAD", "Load stand E-Stop actuated", Severity.ESTOP, i.loadStandEstop)
+        alarms.condition("ESTOP_UNLOAD", "Unload stand E-Stop actuated", Severity.ESTOP, i.unloadStandEstop)
         alarms.condition("SAFETY", "Safety relay MSR1: remote E-Stop chain open", Severity.ESTOP, f.safetyCircuit)
         alarms.condition("AIR", "Main air pressure low (${plant.airPsi.toInt()} psi)", Severity.CSTOP, plant.airPsi < 75)
         if (profile.type == ProfileType.LIFT) {
@@ -200,8 +211,6 @@ class RidePlc(val plant: Plant) {
         gateFaultT = if (!plant.gatesOpenCmd && !plant.gateClosedSensor) gateFaultT + dt else 0.0
         alarms.condition("GATE", "Station air gates – closed switch not made", Severity.WARNING, gateFaultT > 3.0)
 
-        val hasE = alarms.anyActive(Severity.ESTOP)
-        val hasC = alarms.anyActive(Severity.CSTOP)
 
         // ---------- Reset / silence ----------
         if (rise("silence", i.silence)) { alarms.silence(); alarms.acknowledgeAll() }
@@ -215,6 +224,10 @@ class RidePlc(val plant: Plant) {
             if (state == RideState.ESTOP && !alarms.anyActive(Severity.ESTOP)) setState(RideState.STOPPED)
             alarms.info("RESET", if (left == 0) "Fault reset – all faults cleared" else "Fault reset – $left fault(s) still present")
         }
+
+        // Evaluated after the reset so a successful reset takes effect in the same scan.
+        val hasE = alarms.anyActive(Severity.ESTOP)
+        val hasC = alarms.anyActive(Severity.CSTOP)
 
         // ---------- Ride state machine ----------
         if (hasE) setState(RideState.ESTOP)
@@ -355,7 +368,12 @@ class RidePlc(val plant: Plant) {
         runTransfer(dt)
 
         statusText = when {
-            eStopped -> if (inputs.estopPressed) "E-STOP – release E-Stop, then FAULT RESET" else "Press FAULT RESET"
+            eStopped -> when {
+                inputs.loadStandEstop -> "E-STOP at LOAD STAND – release, then FAULT RESET"
+                inputs.unloadStandEstop -> "E-STOP at UNLOAD STAND – release, then FAULT RESET"
+                inputs.estopPressed -> "E-STOP at CONSOLE – release, then FAULT RESET"
+                else -> "Press FAULT RESET"
+            }
             hasC && state != RideState.RUNNING -> "Fault active – correct and reset"
             state == RideState.STARTING -> "Start warning – ride starting"
             state == RideState.CSTOP -> "Controlled stop – trains stopping in blocks"

@@ -92,5 +92,28 @@ class RideCycleTest {
         assertTrue("train at ${t.s}", kotlin.math.abs(t.s - 70.0) < 1.0)
     }
 
+    @Test fun standEstopIsFirstOut() {
+        val plc = RidePlc(Plant(RideProfile.create(ProfileType.LIFT), 3))
+        plc.inputs.mode = KeyMode.AUTO
+        press(plc) { plc.inputs.powerOn = it }
+        press(plc) { plc.inputs.rideStart = it }
+        step(plc, 7.0)
+        plc.inputs.loadStandEstop = true
+        step(plc, 0.5)
+        plc.plant.faults.airLeak = true // second, later fault
+        step(plc, 10.0)
+        assertEquals(RideState.ESTOP, plc.state)
+        assertEquals("ESTOP_LOAD", plc.alarms.firstOut?.code)
+        assertTrue(plc.alarms.isActive("AIR"))
+        // Releasing the stand E-Stop and clearing the leak lets a reset return to STOPPED.
+        plc.inputs.loadStandEstop = false
+        plc.plant.faults.airLeak = false
+        step(plc, 15.0)
+        press(plc) { plc.inputs.faultReset = it }
+        assertEquals(plc.alarms.active.map { it.code + "/" + it.condition }.toString() + " psi=" + plc.plant.airPsi,
+            RideState.STOPPED, plc.state)
+        assertEquals(null, plc.alarms.firstOut)
+    }
+
     companion object { val NOOP: (RidePlc) -> Unit = {} }
 }

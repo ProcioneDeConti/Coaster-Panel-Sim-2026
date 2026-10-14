@@ -62,6 +62,9 @@ class SimViewModel : ViewModel() {
         fresh.inputs.mode = old.mode
         fresh.inputs.estopPressed = old.estopPressed
         fresh.inputs.singleButtonDispatch = old.singleButtonDispatch
+        fresh.inputs.loadStandEstop = old.loadStandEstop
+        fresh.inputs.unloadStandEstop = old.unloadStandEstop
+        fresh.dispatchTarget = plc.dispatchTarget
         profileType = type
         trainCount = trains
         plc = fresh

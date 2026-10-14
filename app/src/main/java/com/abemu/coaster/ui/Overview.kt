@@ -194,6 +194,19 @@ fun TrackDiagram(plc: RidePlc, modifier: Modifier = Modifier) {
             )
         }
 
+        // Remote E-Stop location marker
+        val inp = plc.inputs
+        val where = listOfNotNull(
+            "LOAD STAND".takeIf { inp.loadStandEstop },
+            "UNLOAD STAND".takeIf { inp.unloadStandEstop },
+            "CONSOLE".takeIf { inp.estopPressed },
+        )
+        if (where.isNotEmpty() && blink) {
+            val st = profile.blocks[0].stopPos!!
+            drawText(tm, "⚠ E-STOP: " + where.joinToString(" + "), pt(st) + Offset(-4f, -64f),
+                TextStyle(color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold, background = Color(0xFFD50000)))
+        }
+
         // Legend
         drawText(tm, "■ occupied  ■ clear   ━ brake closed / open   ● entry prox",
             Offset(padL, 6f), TextStyle(color = Color(0xFF78909C), fontSize = 10.sp))

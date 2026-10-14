@@ -95,13 +95,13 @@ fun StationPage(vm: SimViewModel) {
                     HmiHoldButton("GATES\nCLOSE", Modifier.weight(1f)) { inp.gatesClose = it }
                 }
             }
-            HmiFrame("CAPACITY") {
-                val times = plc.dispatchTimes
-                val interval = if (times.size >= 2) (times.last() - times.first()) / (times.size - 1) else 0.0
-                ValueBox("Dispatch interval (avg)", if (interval > 0) "%.0f s".format(interval) else "—")
-                ValueBox("Last dispatch", if (times.isNotEmpty()) "%.0f s ago".format(plc.time - times.last()) else "—")
-                val riders = plc.profile.rows * 4
-                ValueBox("Theoretical capacity", if (interval > 0) "${(3600 / interval * riders).toInt()} riders/h" else "—")
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                DispatchTimer(plc, Modifier.weight(1.3f))
+                HmiFrame("OPERATOR STANDS", Modifier.weight(1f)) {
+                    StandStatus("Load stand", plc.inputs.loadStandEstop, plc.loadReady)
+                    StandStatus("Unload stand", plc.inputs.unloadStandEstop, plc.unloadReady)
+                    StandStatus("Console", plc.inputs.estopPressed, null)
+                }
             }
         }
         HmiFrame("DISPATCH PERMISSIVES", Modifier.weight(1f).fillMaxHeight()) {
@@ -153,6 +153,7 @@ fun AlarmsPage(vm: SimViewModel) {
                 if (act.isEmpty()) item { HmiLabel("  No active alarms", 12.sp, color = Hmi.Dim, modifier = Modifier.padding(8.dp)) }
                 items(act) { a ->
                     val state = when {
+                        plc.alarms.isFirstOut(a) -> "1ST OUT"
                         a.condition && !a.acked -> "ACT/UNACK"
                         a.condition -> "ACTIVE"
                         !a.acked -> "RTN/UNACK"
@@ -310,7 +311,9 @@ fun IoPage(vm: SimViewModel) {
             add("${it.tag}_PX_STOP" to (p.trainAtStop(it.index) != null))
         }
         add("GATES_CLOSED_LS" to p.gateClosedSensor)
-        add("MSR1_SAFETY_OK" to (!p.faults.safetyCircuit && !i.estopPressed))
+        add("LOAD_STAND_ESTOP_NC" to !i.loadStandEstop)
+        add("UNLOAD_STAND_ESTOP_NC" to !i.unloadStandEstop)
+        add("MSR1_SAFETY_OK" to (!p.faults.safetyCircuit && !i.anyEstop))
         add("AIR_PRESS_SW" to (p.airPsi >= 75))
         if (plc.profile.type == ProfileType.LIFT) {
             add("LIFT_CREST_PX" to p.bodyAt(plc.profile.liftCrestSensor))
@@ -386,6 +389,12 @@ fun SimPage(vm: SimViewModel) {
                     HmiLabel("Trains", 11.sp, modifier = Modifier.width(90.dp))
                     (1..3).forEach { n ->
                         HmiButton("$n", enabled = off, active = vm.trainCount == n, activeColor = Hmi.Info) { vm.reconfigure(trains = n) }
+                    }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    HmiLabel("Dispatch target", 11.sp, modifier = Modifier.width(90.dp))
+                    listOf(30.0, 45.0, 60.0, 90.0).forEach { t ->
+                        HmiButton("${t.toInt()} s", active = plc.dispatchTarget == t, activeColor = Hmi.Info) { plc.dispatchTarget = t }
                     }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -476,4 +485,50 @@ private fun FaultToggle(label: String, on: Boolean, set: (Boolean) -> Unit) {
 @Composable
 private fun SmallFault(label: String, on: Boolean, set: (Boolean) -> Unit) {
     HmiButton(label, active = on, activeColor = Hmi.Bad) { set(!on) }
+}
+
+@Composable
+private fun DispatchTimer(plc: com.abemu.coaster.sim.RidePlc, modifier: Modifier) {
+    HmiFrame("DISPATCH TIMER  (target ${plc.dispatchTarget.toInt()} s)", modifier) {
+        val since = plc.sinceDispatch
+        val target = plc.dispatchTarget
+        val color = when {
+            since == null -> Hmi.Dim
+            since <= target * 0.85 -> Hmi.Ok
+            since <= target -> Hmi.Warn
+            else -> Hmi.Bad
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                since?.let { "%d:%02d".format(it.toInt() / 60, it.toInt() % 60) } ?: "--:--",
+                fontSize = 30.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, color = color,
+            )
+            HmiLabel("  since last dispatch", 10.sp, color = Hmi.Dim)
+        }
+        // Progress bar toward the target interval
+        val frac = ((since ?: 0.0) / target).coerceIn(0.0, 1.5).toFloat() / 1.5f
+        Canvas(Modifier.fillMaxWidth().height(10.dp)) {
+            drawRect(Color(0xFF9AA1A8))
+            drawRect(color, size = Size(size.width * frac, size.height))
+            val tx = size.width / 1.5f
+            drawLine(Color.Black, Offset(tx, 0f), Offset(tx, size.height), 2f)
+        }
+        ValueBox("Last interval", plc.lastInterval?.let { "%.0f s (%+.0f)".format(it, it - target) } ?: "—")
+        ValueBox("Average (last 20)", plc.avgInterval?.let { "%.0f s".format(it) } ?: "—")
+        val riders = plc.profile.rows * 4
+        ValueBox("Capacity at average", plc.avgInterval?.let { "${(3600 / it * riders).toInt()} riders/h" } ?: "—")
+    }
+}
+
+@Composable
+private fun StandStatus(name: String, estop: Boolean, ready: Boolean?) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        HmiLabel(name, 11.sp, modifier = Modifier.weight(1f))
+        Indicator(estop, if (flasher()) Hmi.Bad else Color(0xFF7A1010), Hmi.Ok)
+        HmiLabel(if (estop) " E-STOP  " else " OK      ", 10.sp, bold = estop)
+        if (ready != null) {
+            Indicator(ready, Color.White, Hmi.Off)
+            HmiLabel(" RDY", 10.sp)
+        }
+    }
 }

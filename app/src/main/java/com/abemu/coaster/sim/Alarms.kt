@@ -21,6 +21,11 @@ class AlarmManager {
     private val alarms = LinkedHashMap<String, Alarm>()
     val history = ArrayDeque<AlarmEvent>()
 
+    /** Code of the first stop-level alarm in the current fault sequence ("first out"). */
+    private var firstOutCode: String? = null
+    val firstOut: Alarm? get() = firstOutCode?.let { alarms[it] }?.takeIf { it.active }
+    fun isFirstOut(a: Alarm) = a.code == firstOutCode && a.active
+
     private fun now() = LocalTime.now().format(fmt)
 
     private fun log(a: Alarm, event: String) {
@@ -33,11 +38,14 @@ class AlarmManager {
         val a = alarms.getOrPut(code) { Alarm(code, text, severity) }
         a.text = text
         if (!a.active) {
+            val stop = severity.ordinal <= Severity.CSTOP.ordinal
+            val first = stop && alarms.values.none { it !== a && it.active && it.severity.ordinal <= Severity.CSTOP.ordinal }
+            if (first) firstOutCode = code
             a.active = true
             a.acked = false
             a.silenced = false
             a.since = now()
-            log(a, "ACTIVE")
+            log(a, if (first) "1ST OUT" else "ACTIVE")
         }
     }
 
@@ -60,6 +68,7 @@ class AlarmManager {
                 log(a, "CLEARED")
             }
         }
+        if (firstOut == null) firstOutCode = null
         return remaining
     }
 

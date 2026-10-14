@@ -166,7 +166,14 @@ fun PilotLight(legend: String, color: Color, lit: Boolean, modifier: Modifier = 
 
 /** Mushroom-head E-Stop: tap to push (latches), press and hold to twist-release. */
 @Composable
-fun EStopButton(pressed: Boolean, onSet: (Boolean) -> Unit, modifier: Modifier = Modifier, size: Dp = 100.dp) {
+fun EStopButton(
+    pressed: Boolean,
+    onSet: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+    size: Dp = 100.dp,
+    label: String = "EMERGENCY\nSTOP",
+    plateWidth: Dp = 110.dp,
+) {
     val set by rememberUpdatedState(onSet)
     Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
         Canvas(
@@ -202,7 +209,7 @@ fun EStopButton(pressed: Boolean, onSet: (Boolean) -> Unit, modifier: Modifier =
             }
         }
         Spacer(Modifier.height(4.dp))
-        LegendPlate(if (pressed) "E-STOP\nHOLD TO RELEASE" else "EMERGENCY\nSTOP", 110.dp)
+        LegendPlate(if (pressed) "E-STOP\nHOLD TO RELEASE" else label, plateWidth)
     }
 }
 

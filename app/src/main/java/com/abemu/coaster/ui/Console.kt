@@ -1,6 +1,8 @@
 package com.abemu.coaster.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -84,15 +86,21 @@ fun OperatorConsole(vm: SimViewModel, modifier: Modifier = Modifier) {
         // --- Ride control ---
         PanelSection("RIDE CONTROL") {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                val pw = 70.dp
                 PushButton("RIDE\nSTART", Lens.Green,
                     plc.state == RideState.RUNNING || (plc.state == RideState.STOPPED && inp.mode == KeyMode.AUTO && !hasFault && blink),
-                    { inp.rideStart = it })
+                    { inp.rideStart = it }, plateWidth = pw)
                 PushButton("CONTROLLED\nSTOP", Lens.Red, plc.state == RideState.CSTOP && blink,
-                    { inp.controlledStop = it })
+                    { inp.controlledStop = it }, plateWidth = pw)
                 PushButton("FAULT\nRESET", Lens.Blue, powered && plc.resetNeeded && blink,
-                    { inp.faultReset = it })
+                    { inp.faultReset = it }, plateWidth = pw)
                 PushButton("ALARM\nSILENCE", Lens.Amber, plc.hornActive && blink,
-                    { inp.silence = it })
+                    { inp.silence = it }, plateWidth = pw)
+                if (plc.profile.type == ProfileType.LIFT)
+                    PushButton("LIFT JOG\n(HOLD)", Lens.Black, false, { inp.liftJog = it }, illuminated = false, plateWidth = pw)
+                else
+                    PushButton("MANUAL\nLAUNCH", Lens.Black, false, { inp.manualRelease[1] = it }, illuminated = false, plateWidth = pw)
+                PushButton("STATION\nRELEASE", Lens.Black, false, { inp.manualRelease[0] = it }, illuminated = false, plateWidth = pw)
             }
         }
 
@@ -108,13 +116,8 @@ fun OperatorConsole(vm: SimViewModel, modifier: Modifier = Modifier) {
                     { inp.gatesClose = it })
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                PushButton("LOAD SIDE\nREADY", Lens.White, plc.loadReady, { inp.loadReady = it })
-                PushButton("UNLOAD SIDE\nREADY", Lens.White, plc.unloadReady, { inp.unloadReady = it })
-                if (plc.profile.type == ProfileType.LIFT)
-                    PushButton("LIFT\nJOG (HOLD)", Lens.Black, false, { inp.liftJog = it }, illuminated = false)
-                else
-                    PushButton("MANUAL\nLAUNCH", Lens.Black, false, { inp.manualRelease[1] = it }, illuminated = false)
-                PushButton("STATION\nRELEASE", Lens.Black, false, { inp.manualRelease[0] = it }, illuminated = false)
+                OperatorStand("LOAD STAND", inp.loadStandEstop, { inp.loadStandEstop = it }, plc.loadReady) { inp.loadReady = it }
+                OperatorStand("UNLOAD STAND", inp.unloadStandEstop, { inp.unloadStandEstop = it }, plc.unloadReady) { inp.unloadReady = it }
             }
         }
 
@@ -134,3 +137,27 @@ fun OperatorConsole(vm: SimViewModel, modifier: Modifier = Modifier) {
     }
 }
 
+
+/** Remote operator stand: its own E-Stop plus that side's READY pushbutton. */
+@Composable
+private fun OperatorStand(
+    name: String,
+    estop: Boolean,
+    onEstop: (Boolean) -> Unit,
+    ready: Boolean,
+    onReady: (Boolean) -> Unit,
+) {
+    Column(
+        Modifier
+            .background(Color(0xFF2F3338), RoundedCornerShape(6.dp))
+            .border(1.dp, Color(0xFF6A7178), RoundedCornerShape(6.dp))
+            .padding(6.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(name, color = Color(0xFFB8C0CA), fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Bottom) {
+            EStopButton(estop, onEstop, size = 58.dp, label = "E-STOP", plateWidth = 76.dp)
+            PushButton("READY", Lens.White, ready, onReady, size = 46.dp, plateWidth = 64.dp)
+        }
+    }
+}
