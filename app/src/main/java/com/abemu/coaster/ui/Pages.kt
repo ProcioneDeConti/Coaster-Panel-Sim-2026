@@ -487,6 +487,7 @@ fun SimPage(vm: SimViewModel, onOpenEditor: () -> Unit) {
                     }
                 }
             }
+            SoundTestFrame()
             HmiFrame("OPERATOR AIDS") {
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                     HmiLabel("Dispatch", 11.sp, modifier = Modifier.width(90.dp))
@@ -603,6 +604,41 @@ private fun DispatchTimer(vm: SimViewModel, modifier: Modifier) {
         ValueBox("Average (last 20)", plc.avgInterval?.let { "%.0f s".format(it) } ?: "—")
         val riders = plc.profile.ridersPerTrain
         ValueBox("Capacity at average", plc.avgInterval?.let { "${(3600 / it * riders).toInt()} riders/h" } ?: "—")
+    }
+}
+
+/** TEMPORARY debug panel: play each ride sound on demand. Held sounds toggle; one-shots play once. */
+@Composable
+private fun SoundTestFrame() {
+    var tick by remember { mutableStateOf(0) } // recompose after a toggle (SoundTest isn't Compose state)
+    tick
+    HmiFrame("SOUND TEST (DEBUG)") {
+        HmiLabel("Held sounds (tap to toggle) — uses the volume setting above", 10.sp, color = Hmi.Dim)
+        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            listOf(
+                Triple("TRACK CLEAR", { SoundTest.trackClear }, { v: Boolean -> SoundTest.trackClear = v }),
+                Triple("FAULT HORN", { SoundTest.horn }, { v: Boolean -> SoundTest.horn = v }),
+                Triple("LIFT MOTOR", { SoundTest.lift }, { v: Boolean -> SoundTest.lift = v }),
+                Triple("ANTI-ROLLBACK", { SoundTest.clack }, { v: Boolean -> SoundTest.clack = v }),
+                Triple("LSM WHINE", { SoundTest.lsm }, { v: Boolean -> SoundTest.lsm = v; if (v) SoundTest.lsmStartMs = System.currentTimeMillis() }),
+            ).forEach { (label, get, set) ->
+                HmiButton(label, Modifier.weight(1f), active = get(), activeColor = Hmi.Info, fontSize = 10.sp, maxLines = 2, hPad = 4.dp) {
+                    set(!get()); tick++
+                }
+            }
+        }
+        HmiLabel("One-shots", 10.sp, color = Hmi.Dim)
+        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            HmiButton("DISPATCH CHIME", Modifier.weight(1f), fontSize = 10.sp, maxLines = 2, hPad = 4.dp) { SoundTest.audio?.dispatchChime() }
+            HmiButton("LAUNCH BEEPS", Modifier.weight(1f), fontSize = 10.sp, maxLines = 2, hPad = 4.dp) { SoundTest.audio?.launchWarning() }
+            HmiButton("AIR HISS", Modifier.weight(1f), fontSize = 10.sp, maxLines = 2, hPad = 4.dp) { SoundTest.audio?.hiss() }
+            HmiButton("RESTRAINT LOCK", Modifier.weight(1f), fontSize = 10.sp, maxLines = 2, hPad = 4.dp) { SoundTest.audio?.thump(locking = true) }
+            HmiButton("RESTRAINT UNLOCK", Modifier.weight(1f), fontSize = 10.sp, maxLines = 2, hPad = 4.dp) { SoundTest.audio?.thump(locking = false) }
+            HmiButton("ALL OFF", Modifier.weight(1f), fontSize = 10.sp, maxLines = 2, hPad = 4.dp) {
+                SoundTest.trackClear = false; SoundTest.horn = false; SoundTest.lift = false; SoundTest.clack = false; SoundTest.lsm = false
+                tick++
+            }
+        }
     }
 }
 
