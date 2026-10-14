@@ -535,13 +535,13 @@ private fun CoasterPicker(vm: SimViewModel, enabled: Boolean) {
     val lib = com.abemu.coaster.sim.CoasterLibrary.all
     ProfileType.entries.forEach { type ->
         HmiLabel(type.label.uppercase(), 10.sp, bold = true, color = Hmi.Dim)
-        lib.filter { it.type == type }.chunked(4).forEach { row ->
+        lib.filter { it.type == type }.chunked(3).forEach { row ->
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 row.forEach { c ->
                     HmiButton(c.name + if (c.park != null) " ★" else "", Modifier.weight(1f), enabled = enabled,
                         active = vm.coasterId == c.id, activeColor = Hmi.Info, fontSize = 10.sp) { vm.reconfigure(id = c.id) }
                 }
-                repeat(4 - row.size) { Box(Modifier.weight(1f)) }
+                repeat(3 - row.size) { Box(Modifier.weight(1f)) }
             }
         }
     }

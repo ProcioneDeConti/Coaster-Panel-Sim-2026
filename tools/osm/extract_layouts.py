@@ -42,8 +42,8 @@ def chain(wids):
             if sg[-1] == loop[0]: loop = sg[:-1] + loop; segs.pop(i); break
             if sg[0] == loop[0]: loop = sg[::-1][:-1] + loop; segs.pop(i); break
         else: raise SystemExit('could not chain')
-    if loop[0] == loop[-1]: loop = loop[:-1]
-    return loop
+    if loop[0] == loop[-1]: return loop[:-1]
+    return loop + loop[-2:0:-1]  # open track: out and back
 
 def forward(loop, wids):
     pos = {n: i for i, n in enumerate(loop)}; v = 0
@@ -60,7 +60,8 @@ def densify(pts, step=4.0):
         out += [(a[0] + (b[0] - a[0]) * t / k, a[1] + (b[1] - a[1]) * t / k) for t in range(k)]
     return out
 
-rides = [('millennium', 'Millennium Force'), ('magnum', 'Magnum XL-200'), ('maverick', 'Maverick'), ('gemini', 'Gemini')]
+rides = [('millennium', 'Millennium Force'), ('magnum', 'Magnum XL-200'), ('maverick', 'Maverick'), ('gemini', 'Gemini'),
+         ('tt2', 'Top Thrill 2')]
 out = []
 for rid, name in rides:
     poly = stations[name]
@@ -71,6 +72,7 @@ for rid, name in rides:
     wids = max((w for w in comps.values() if len(w) > 1 or len(ways[w[0]][0]) > 10), key=score)
     loop = chain(wids)
     if not forward(loop, wids): loop = loop[::-1]
+    # start the station run on the first pass of an out-and-back track
     pts = densify([xy(n) for n in loop])
     n = len(pts)
     ins = [inside(p, poly) for p in pts]
