@@ -379,12 +379,7 @@ fun SimPage(vm: SimViewModel) {
     Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         Column(Modifier.weight(1f).fillMaxHeight().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             HmiFrame("RIDE CONFIGURATION  (ride power must be OFF)") {
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    HmiLabel("Profile", 11.sp, modifier = Modifier.width(90.dp))
-                    ProfileType.entries.forEach { t ->
-                        HmiButton(t.label, enabled = off, active = vm.profileType == t, activeColor = Hmi.Info) { vm.reconfigure(type = t) }
-                    }
-                }
+                CoasterPicker(vm, off)
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                     HmiLabel("Trains", 11.sp, modifier = Modifier.width(90.dp))
                     (1..3).forEach { n ->
@@ -449,17 +444,23 @@ fun SimPage(vm: SimViewModel) {
             HmiFrame("FAULT INJECTION – BLOCK DEVICES") {
                 plc.profile.blocks.forEach { b ->
                     HmiLabel("${b.tag} ${b.name}", 11.sp, bold = true)
-                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        SmallFault("Prox stuck ON", b.index in f.sensorStuckOn) {
-                            if (it) f.sensorStuckOn += b.index else f.sensorStuckOn -= b.index
-                        }
-                        SmallFault("Prox failed OFF", b.index in f.sensorStuckOff) {
-                            if (it) f.sensorStuckOff += b.index else f.sensorStuckOff -= b.index
-                        }
+                    val items = buildList<Pair<String, Pair<Boolean, (Boolean) -> Unit>>> {
+                        add("Prox stuck ON" to ((b.index in f.sensorStuckOn) to { on: Boolean ->
+                            if (on) f.sensorStuckOn += b.index else f.sensorStuckOn -= b.index }))
+                        add("Prox failed OFF" to ((b.index in f.sensorStuckOff) to { on: Boolean ->
+                            if (on) f.sensorStuckOff += b.index else f.sensorStuckOff -= b.index }))
                         if (b.stopPos != null) {
                             val brk = plc.plant.brakes[b.index]
-                            SmallFault("Brake stuck open", brk.stuckOpen) { brk.stuckOpen = it }
-                            SmallFault("Brake stuck closed", brk.stuckClosed) { brk.stuckClosed = it }
+                            add("Brake stuck open" to (brk.stuckOpen to { on: Boolean -> brk.stuckOpen = on }))
+                            add("Brake stuck closed" to (brk.stuckClosed to { on: Boolean -> brk.stuckClosed = on }))
+                        }
+                    }
+                    items.chunked(2).forEach { pair ->
+                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            pair.forEach { (label, st) ->
+                                HmiButton(label, Modifier.weight(1f), active = st.first, activeColor = Hmi.Bad) { st.second(!st.first) }
+                            }
+                            if (pair.size == 1) Box(Modifier.weight(1f))
                         }
                     }
                 }
@@ -482,10 +483,6 @@ private fun FaultToggle(label: String, on: Boolean, set: (Boolean) -> Unit) {
     }
 }
 
-@Composable
-private fun SmallFault(label: String, on: Boolean, set: (Boolean) -> Unit) {
-    HmiButton(label, active = on, activeColor = Hmi.Bad) { set(!on) }
-}
 
 @Composable
 private fun DispatchTimer(plc: com.abemu.coaster.sim.RidePlc, modifier: Modifier) {
@@ -515,7 +512,7 @@ private fun DispatchTimer(plc: com.abemu.coaster.sim.RidePlc, modifier: Modifier
         }
         ValueBox("Last interval", plc.lastInterval?.let { "%.0f s (%+.0f)".format(it, it - target) } ?: "—")
         ValueBox("Average (last 20)", plc.avgInterval?.let { "%.0f s".format(it) } ?: "—")
-        val riders = plc.profile.rows * 4
+        val riders = plc.profile.ridersPerTrain
         ValueBox("Capacity at average", plc.avgInterval?.let { "${(3600 / it * riders).toInt()} riders/h" } ?: "—")
     }
 }
@@ -531,4 +528,33 @@ private fun StandStatus(name: String, estop: Boolean, ready: Boolean?) {
             HmiLabel(" RDY", 10.sp)
         }
     }
+}
+
+@Composable
+private fun CoasterPicker(vm: SimViewModel, enabled: Boolean) {
+    val lib = com.abemu.coaster.sim.CoasterLibrary.all
+    ProfileType.entries.forEach { type ->
+        HmiLabel(type.label.uppercase(), 10.sp, bold = true, color = Hmi.Dim)
+        lib.filter { it.type == type }.chunked(4).forEach { row ->
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                row.forEach { c ->
+                    HmiButton(c.name + if (c.park != null) " ★" else "", Modifier.weight(1f), enabled = enabled,
+                        active = vm.coasterId == c.id, activeColor = Hmi.Info, fontSize = 10.sp) { vm.reconfigure(id = c.id) }
+                }
+                repeat(4 - row.size) { Box(Modifier.weight(1f)) }
+            }
+        }
+    }
+    val p = vm.plc.profile
+    val facts = buildString {
+        append(p.name)
+        p.spec.park?.let { append(" – $it") }
+        append(" · ${p.type.label}")
+        if (p.type == ProfileType.LIFT) append(" · lift ${p.spec.height.toInt()} m @ ${p.liftSpeed} m/s")
+        else append(" · launch ${p.launchSpeed.toInt()} m/s, top hat ${p.maxHeight.toInt()} m")
+        append(" · track ${p.length.toInt()} m · ${p.rows} cars × ${p.spec.ridersPerCar} riders")
+    }
+    HmiLabel(facts, 11.sp, bold = true)
+    if (p.spec.note.isNotEmpty()) HmiLabel(p.spec.note, 10.sp, color = Hmi.Dim)
+    if (!enabled) HmiLabel("Turn RIDE POWER OFF to change coaster or train count.", 10.sp, color = Hmi.Warn)
 }

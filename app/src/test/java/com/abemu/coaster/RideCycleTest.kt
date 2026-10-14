@@ -1,5 +1,7 @@
 ﻿package com.abemu.coaster
 
+import com.abemu.coaster.sim.CoasterLibrary
+import com.abemu.coaster.sim.CoasterSpec
 import com.abemu.coaster.sim.KeyMode
 import com.abemu.coaster.sim.Plant
 import com.abemu.coaster.sim.ProfileType
@@ -22,8 +24,11 @@ class RideCycleTest {
         repeat((secs / dt).toInt()) { plc.scan(dt); plc.plant.step(dt) }
     }
 
-    private fun runCycles(type: ProfileType, trains: Int, dispatches: Int, configure: (RidePlc) -> Unit = {}): RidePlc {
-        val plc = RidePlc(Plant(RideProfile.create(type), trains))
+    private fun runCycles(type: ProfileType, trains: Int, dispatches: Int, configure: (RidePlc) -> Unit = {}): RidePlc =
+        runCycles(CoasterLibrary.default(type), trains, dispatches, configure)
+
+    private fun runCycles(spec: CoasterSpec, trains: Int, dispatches: Int, configure: (RidePlc) -> Unit = {}): RidePlc {
+        val plc = RidePlc(Plant(RideProfile.create(spec), trains))
         configure(plc)
         plc.inputs.mode = KeyMode.AUTO
         press(plc) { plc.inputs.powerOn = it }
@@ -59,11 +64,11 @@ class RideCycleTest {
             maxV = maxOf(maxV, plc.plant.trains.maxOf { it.v })
             val bad = plc.alarms.active.filter { it.severity.ordinal <= Severity.CSTOP.ordinal }
             if (bad.isNotEmpty() && configure === NOOP) {
-                throw AssertionError("alarms: " + bad.map { it.text } + " trains=" +
+                throw AssertionError("${spec.name}: alarms: " + bad.map { it.text } + " trains=" +
                     plc.plant.trains.map { "${it.id}@${"%.1f".format(it.s)}/${"%.2f".format(it.v)}" })
             }
         }
-        println("$type x$trains: $done dispatches, max speed ${"%.1f".format(maxV)} m/s, t=$guard")
+        println("${spec.name} x$trains: $done dispatches, max speed ${"%.1f".format(maxV)} m/s, t=$guard")
         return plc
     }
 
@@ -72,7 +77,11 @@ class RideCycleTest {
     @Test fun launchThreeTrains() { runCycles(ProfileType.LAUNCH, 3, 8, NOOP) }
 
     @Test fun launchRollback() {
-        val plc = RidePlc(Plant(RideProfile.create(ProfileType.LAUNCH), 1))
+        CoasterLibrary.all.filter { it.type == ProfileType.LAUNCH }.forEach { rollback(it) }
+    }
+
+    private fun rollback(spec: CoasterSpec) {
+        val plc = RidePlc(Plant(RideProfile.create(spec), 1))
         plc.plant.faults.launchUnderspeed = true
         plc.inputs.mode = KeyMode.AUTO
         press(plc) { plc.inputs.powerOn = it }
@@ -83,13 +92,17 @@ class RideCycleTest {
         plc.inputs.dispatchL = true; plc.inputs.dispatchR = true; step(plc, 0.2)
         plc.inputs.dispatchL = false; plc.inputs.dispatchR = false
         step(plc, 60.0)
-        assertTrue(plc.alarms.isActive("ROLLBACK"))
+        assertTrue("${spec.name} no rollback", plc.alarms.isActive("ROLLBACK"))
         assertEquals(RideState.STOPPED, plc.state)
         plc.plant.faults.launchUnderspeed = false
         press(plc) { plc.inputs.faultReset = it }
-        step(plc, 45.0)
+        step(plc, 120.0)
         val t = plc.plant.trains[0]
-        assertTrue("train at ${t.s}", kotlin.math.abs(t.s - 70.0) < 1.0)
+        assertTrue("${spec.name} train at ${t.s}", kotlin.math.abs(t.s - 70.0) < 1.0)
+    }
+
+    @Test fun everyCoasterRunsCleanly() {
+        CoasterLibrary.all.forEach { runCycles(it, 3, 5, NOOP) }
     }
 
     @Test fun standEstopIsFirstOut() {

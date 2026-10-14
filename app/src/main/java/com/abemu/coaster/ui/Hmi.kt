@@ -133,7 +133,7 @@ private fun TitleBar(vm: SimViewModel, page: HmiPage) {
         Modifier.fillMaxWidth().background(Hmi.Header).padding(horizontal = 8.dp, vertical = 5.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text("${plc.profile.type.label.uppercase()} COASTER", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+        Text(plc.profile.name.uppercase(), color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
         Text("  ›  ${page.title}", color = Color(0xFFAFC4DD), fontSize = 12.sp)
         Spacer(Modifier.weight(1f))
         Box(Modifier.background(stateColor(plc.state), RoundedCornerShape(3.dp)).padding(horizontal = 8.dp, vertical = 2.dp)) {
@@ -205,6 +205,7 @@ fun HmiButton(
     enabled: Boolean = true,
     active: Boolean = false,
     activeColor: Color = Hmi.Ok,
+    fontSize: TextUnit = 11.sp,
     onClick: () -> Unit,
 ) {
     Box(
@@ -223,7 +224,8 @@ fun HmiButton(
         contentAlignment = Alignment.Center,
     ) {
         Text(
-            text, fontSize = 11.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center,
+            text, fontSize = fontSize, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center,
+            maxLines = 1, overflow = TextOverflow.Ellipsis,
             color = if (!enabled) Color(0xFF8A8A8A) else if (active) Color.White else Hmi.Text,
         )
     }

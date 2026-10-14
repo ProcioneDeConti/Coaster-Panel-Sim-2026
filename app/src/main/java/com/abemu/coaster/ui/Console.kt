@@ -156,8 +156,8 @@ private fun OperatorStand(
     ) {
         Text(name, color = Color(0xFFB8C0CA), fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Bottom) {
-            EStopButton(estop, onEstop, size = 58.dp, label = "E-STOP", plateWidth = 76.dp)
-            PushButton("READY", Lens.White, ready, onReady, size = 46.dp, plateWidth = 64.dp)
+            EStopButton(estop, onEstop, size = 48.dp, label = "E-STOP", plateWidth = 64.dp)
+            PushButton("READY", Lens.White, ready, onReady, size = 42.dp, plateWidth = 56.dp)
         }
     }
 }

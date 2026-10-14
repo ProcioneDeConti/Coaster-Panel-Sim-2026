@@ -400,14 +400,15 @@ class RidePlc(val plant: Plant) {
                 launchTrain = occ[1]; launchExitSeen = plant.launchExitEvent
                 alarms.info("LSM", "Launch – train $launchTrain")
             }
-            LaunchState.FIRING -> if (plant.launchExitEvent != launchExitSeen || launchT > 4.0) {
+            LaunchState.FIRING -> if (plant.launchExitEvent != launchExitSeen || launchT > profile.launchSpeed / 11.0 + 2.0) {
                 launchState = LaunchState.VERIFY; launchT = 0.0
                 val v = plant.lastLaunchExitSpeed
-                if (v < 28.0) alarms.raise("LSM_SPD", "Launch exit speed low: ${"%.1f".format(v)} m/s (min 28.0)", Severity.WARNING)
+                val min = profile.launchSpeed * 0.92
+                if (v < min) alarms.raise("LSM_SPD", "Launch exit speed low: ${"%.1f".format(v)} m/s (min ${"%.1f".format(min)})", Severity.WARNING)
             }
             LaunchState.VERIFY -> when {
                 occ[2] == launchTrain -> launchState = LaunchState.IDLE
-                launchT > 7.0 -> {
+                launchT > profile.launchVerifySec -> {
                     launchState = LaunchState.ROLLBACK
                     alarms.raise("ROLLBACK", "Launch rollback – train $launchTrain failed to crest top hat", Severity.CSTOP)
                 }

@@ -66,8 +66,8 @@ class Plant(val profile: RideProfile, activeTrains: Int, totalTrains: Int = 3) {
     var lastLaunchExitSpeed = 0.0
     var launchExitEvent = 0
 
-    val liftChainSpeed = 3.5
-    val launchSpeed get() = if (faults.launchUnderspeed) 24.0 else 30.5
+    val liftChainSpeed get() = profile.liftSpeed
+    val launchSpeed get() = if (faults.launchUnderspeed) profile.rollbackSpeed else profile.launchSpeed
 
     init {
         val stops = buildList {

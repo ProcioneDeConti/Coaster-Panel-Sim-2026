@@ -9,6 +9,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.abemu.coaster.sim.CoasterLibrary
 import com.abemu.coaster.sim.Plant
 import com.abemu.coaster.sim.ProfileType
 import com.abemu.coaster.sim.RidePlc
@@ -23,9 +24,9 @@ import kotlinx.coroutines.launch
  * fields directly; [frame] ticks each update to drive recomposition.
  */
 class SimViewModel : ViewModel() {
-    var profileType by mutableStateOf(ProfileType.LIFT); private set
+    var coasterId by mutableStateOf(CoasterLibrary.default(ProfileType.LIFT).id); private set
     var trainCount by mutableIntStateOf(3); private set
-    var plc by mutableStateOf(build(ProfileType.LIFT, 3)); private set
+    var plc by mutableStateOf(build(coasterId, 3)); private set
     var timeScale by mutableDoubleStateOf(1.0)
     var soundOn by mutableStateOf(true)
     var volume by mutableFloatStateOf(0.5f)
@@ -52,20 +53,20 @@ class SimViewModel : ViewModel() {
         }
     }
 
-    private fun build(type: ProfileType, trains: Int) = RidePlc(Plant(RideProfile.create(type), trains))
+    private fun build(id: String, trains: Int) = RidePlc(Plant(RideProfile.create(CoasterLibrary.byId(id)), trains))
 
     /** Change ride profile / train count. Only allowed with ride power off, like a real config change. */
-    fun reconfigure(type: ProfileType = profileType, trains: Int = trainCount): Boolean {
+    fun reconfigure(id: String = coasterId, trains: Int = trainCount): Boolean {
         if (plc.state != RideState.POWER_OFF) return false
         val old = plc.inputs
-        val fresh = build(type, trains)
+        val fresh = build(id, trains)
         fresh.inputs.mode = old.mode
         fresh.inputs.estopPressed = old.estopPressed
         fresh.inputs.singleButtonDispatch = old.singleButtonDispatch
         fresh.inputs.loadStandEstop = old.loadStandEstop
         fresh.inputs.unloadStandEstop = old.unloadStandEstop
         fresh.dispatchTarget = plc.dispatchTarget
-        profileType = type
+        coasterId = id
         trainCount = trains
         plc = fresh
         return true

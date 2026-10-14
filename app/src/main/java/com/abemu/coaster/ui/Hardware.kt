@@ -221,7 +221,7 @@ fun KeySwitch(
     selected: Int,
     onSelect: (Int) -> Unit,
     modifier: Modifier = Modifier,
-    size: Dp = 128.dp,
+    size: Dp = 116.dp,
 ) {
     val tm = rememberTextMeasurer()
     val pick by rememberUpdatedState(onSelect)
