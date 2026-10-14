@@ -16,6 +16,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -227,33 +229,68 @@ fun TrackDiagram(plc: RidePlc, modifier: Modifier = Modifier) {
 }
 
 
-/** Top-down (plan view) track diagram, the usual layout on ride HMIs. */
+/** Maps the 100 x 56 plan box onto a canvas of the given size. */
+class PlanTransform(val profile: com.abemu.coaster.sim.RideProfile, width: Float, height: Float) {
+    private val pad = 28f
+    private val scale = minOf((width - pad * 2) / 100f, (height - pad * 2 - 14f) / 56f)
+    private val ox = (width - 100f * scale) / 2
+    private val oy = pad + 14f + (height - pad * 2 - 14f - 56f * scale) / 2
+
+    fun pt(s: Double): Offset {
+        val (x, y) = profile.planPoint(s)
+        return Offset(ox + x.toFloat() * scale, oy + y.toFloat() * scale)
+    }
+
+    /** Track path between two positions (forward, handling wrap). */
+    fun seg(from: Double, to: Double): Path {
+        val len = profile.ahead(from, to).let { if (it == 0.0) profile.length else it }
+        val path = Path()
+        path.moveTo(pt(from).x, pt(from).y)
+        var d = 0.0
+        while (d < len) { d = minOf(len, d + 2.0); val p = pt(from + d); path.lineTo(p.x, p.y) }
+        return path
+    }
+
+    /** Track position (metres) nearest to a canvas point, and its distance in pixels. */
+    fun nearest(p: Offset): Pair<Double, Float> {
+        var best = 0.0
+        var bestD = Float.MAX_VALUE
+        var s = 0.0
+        while (s < profile.length) {
+            val d = (pt(s) - p).getDistance()
+            if (d < bestD) { bestD = d; best = s }
+            s += 0.5
+        }
+        return best to bestD
+    }
+}
+
+/**
+ * Top-down (plan view) track diagram, the usual layout on ride HMIs.
+ * [onTapTrack] receives the track position nearest a tap; [overlay] draws on top (editor tags).
+ */
 @Composable
-fun PlanDiagram(plc: RidePlc, modifier: Modifier = Modifier) {
+fun PlanDiagram(
+    plc: RidePlc,
+    modifier: Modifier = Modifier,
+    onTapTrack: ((Double) -> Unit)? = null,
+    overlay: (androidx.compose.ui.graphics.drawscope.DrawScope.(PlanTransform) -> Unit)? = null,
+) {
     val tm = rememberTextMeasurer()
     val profile = plc.profile
     val plant = plc.plant
     val blink = flasher()
-    Canvas(modifier.background(Color(0xFF0F1A24))) {
-        val boxW = 100f
-        val boxH = 56f
-        val pad = 28f
-        val scale = minOf((size.width - pad * 2) / boxW, (size.height - pad * 2 - 14f) / boxH)
-        val ox = (size.width - boxW * scale) / 2
-        val oy = pad + 14f + (size.height - pad * 2 - 14f - boxH * scale) / 2
-        fun pt(s: Double): Offset {
-            val (x, y) = profile.planPoint(s)
-            return Offset(ox + x.toFloat() * scale, oy + y.toFloat() * scale)
+    val tap by androidx.compose.runtime.rememberUpdatedState(onTapTrack)
+    val tapMod = if (onTapTrack == null) Modifier else Modifier.pointerInput(profile) {
+        detectTapGestures { p ->
+            val (s, d) = PlanTransform(profile, size.width.toFloat(), size.height.toFloat()).nearest(p)
+            if (d < 60f) tap?.invoke(s)
         }
-        /** Track path between two positions (forward, handling wrap). */
-        fun seg(from: Double, to: Double): Path {
-            val len = profile.ahead(from, to).let { if (it == 0.0) profile.length else it }
-            val path = Path()
-            path.moveTo(pt(from).x, pt(from).y)
-            var d = 0.0
-            while (d < len) { d = minOf(len, d + 2.0); val p = pt(from + d); path.lineTo(p.x, p.y) }
-            return path
-        }
+    }
+    Canvas(modifier.background(Color(0xFF0F1A24)).then(tapMod)) {
+        val xf = PlanTransform(profile, size.width, size.height)
+        fun pt(s: Double) = xf.pt(s)
+        fun seg(from: Double, to: Double) = xf.seg(from, to)
 
         // Station platform and transfer spur
         val st = profile.blocks[0]
@@ -339,6 +376,8 @@ fun PlanDiagram(plc: RidePlc, modifier: Modifier = Modifier) {
             drawText(tm, "⚠ E-STOP: " + where.joinToString(" + "), pt(st.stopPos) + Offset(-60f, -44f),
                 TextStyle(color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold, background = Color(0xFFD50000)))
         }
+
+        overlay?.invoke(this, xf)
 
         drawText(tm, "PLAN VIEW   ━ occupied / clear   ┅ brake closed / open   ● entry prox",
             Offset(8f, 6f), TextStyle(color = Color(0xFF78909C), fontSize = 10.sp))

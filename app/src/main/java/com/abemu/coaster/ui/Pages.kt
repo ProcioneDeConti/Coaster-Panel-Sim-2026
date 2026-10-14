@@ -371,7 +371,7 @@ private fun IoColumn(title: String, points: List<Io>, modifier: Modifier) {
 // ================================================================ INSTRUCTOR / SIM
 
 @Composable
-fun SimPage(vm: SimViewModel) {
+fun SimPage(vm: SimViewModel, onOpenEditor: () -> Unit) {
     vm.frame.longValue
     val plc = vm.plc
     val f = plc.plant.faults
@@ -380,6 +380,7 @@ fun SimPage(vm: SimViewModel) {
         Column(Modifier.weight(1f).fillMaxHeight().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             HmiFrame("RIDE CONFIGURATION  (ride power must be OFF)") {
                 CoasterPicker(vm, off)
+                HmiButton("OPEN TRACK EDITOR (DEV)", Modifier.fillMaxWidth(), activeColor = Hmi.Info) { onOpenEditor() }
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                     HmiLabel("Trains", 11.sp, modifier = Modifier.width(90.dp))
                     (1..3).forEach { n ->

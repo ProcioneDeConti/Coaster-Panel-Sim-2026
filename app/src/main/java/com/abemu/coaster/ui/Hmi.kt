@@ -60,6 +60,7 @@ object Hmi {
 enum class HmiPage(val key: String, val title: String) {
     OVERVIEW("F1", "OVERVIEW"), STATION("F2", "STATION"), ALARMS("F3", "ALARMS"),
     MAINT("F4", "MANUAL / MAINT"), IO("F5", "I/O STATUS"), SIM("F6", "INSTRUCTOR"),
+    EDITOR("DEV", "TRACK EDITOR"),
 }
 
 fun stateColor(s: RideState) = when (s) {
@@ -93,10 +94,9 @@ fun HmiTerminal(vm: SimViewModel, modifier: Modifier = Modifier) {
             .padding(10.dp),
     ) {
         Row(Modifier.padding(bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("RIDE CONTROL HMI", color = Color(0xFFB5BCC5), fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
+            Text("Allen-Bradley", color = Color(0xFFD5DAE0), fontSize = 13.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.weight(1f))
-            Box(Modifier.size(8.dp).background(if (plc.powered) Lens.Green else Color(0xFF333333), RoundedCornerShape(4.dp)))
-            Text("  RUN", color = Color(0xFF8A929C), fontSize = 9.sp)
+            Text("PanelView Plus 1000", color = Color(0xFFB5BCC5), fontSize = 12.sp, fontWeight = FontWeight.Bold)
         }
         Column(
             Modifier
@@ -114,12 +114,13 @@ fun HmiTerminal(vm: SimViewModel, modifier: Modifier = Modifier) {
                     HmiPage.ALARMS -> AlarmsPage(vm)
                     HmiPage.MAINT -> MaintPage(vm)
                     HmiPage.IO -> IoPage(vm)
-                    HmiPage.SIM -> SimPage(vm)
+                    HmiPage.SIM -> SimPage(vm) { page = HmiPage.EDITOR }
+                    HmiPage.EDITOR -> EditorPage(vm) { page = HmiPage.SIM }
                 }
             }
         }
         Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            HmiPage.entries.forEach { p ->
+            HmiPage.entries.filter { it != HmiPage.EDITOR }.forEach { p ->
                 FunctionKey(p.key, p.title, page == p, Modifier.weight(1f)) { page = p }
             }
         }
