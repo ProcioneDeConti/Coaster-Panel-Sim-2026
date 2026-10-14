@@ -52,6 +52,8 @@ object IoMap {
             add(pt("GATES_CLOSED_LS", true) { p.gateClosedSensor })
             add(pt("LOAD_STAND_ESTOP_NC", true) { !i.loadStandEstop })
             add(pt("UNLOAD_STAND_ESTOP_NC", true) { !i.unloadStandEstop })
+            add(pt("LOAD_FOOT_SW", true) { i.loadFootSwitch })
+            add(pt("UNLOAD_FOOT_SW", true) { i.unloadFootSwitch })
             add(pt("REMOTE_ESTOP_OK", true) { !p.faults.safetyCircuit })
             add(pt("AIR_PRESS_SW", true) { p.airPsi >= 75 })
             if (prof.type == ProfileType.LIFT) {

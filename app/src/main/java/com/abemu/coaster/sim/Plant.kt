@@ -73,6 +73,9 @@ class Plant(val profile: RideProfile, activeTrains: Int, totalTrains: Int = 3) {
     val tiresCmd = BooleanArray(profile.blocks.size)
     var gatesOpenCmd = false
     var restraintUnlockCmd = false
+    /** Seconds since the restraints were commanded closed (-1 = not closing), and each row's lock time. */
+    private var lockT = -1.0
+    private val lockAt = DoubleArray(profile.rows)
     var compressorEnabled = true
     /** Safety output power to brake valves and drive enables (STO). Off = brakes close, drives stop. */
     var safetyPower = true
@@ -187,8 +190,17 @@ class Plant(val profile: RideProfile, activeTrains: Int, totalTrains: Int = 3) {
         else approach(gatePos, if (gatesOpenCmd && airPsi > 50) 1.0 else 0.0, dt / 1.5)
 
         stationTrain()?.let { t ->
-            if (restraintUnlockCmd) t.rowLocked.fill(false)
-            else for (r in t.rowLocked.indices) if (!t.rowLocked[r] && Math.random() < dt * 1.5) t.rowLocked[r] = true
+            if (restraintUnlockCmd) { t.rowLocked.fill(false); lockT = -1.0 }
+            else if (t.rowLocked.any { !it }) {
+                // Restraints close: rows lock one after another in a random order, as riders pull them down.
+                if (lockT < 0) {
+                    var at = 0.2
+                    for (r in t.rowLocked.indices.shuffled()) { at += 0.15 + Math.random() * 0.45; lockAt[r] = at }
+                    lockT = 0.0
+                }
+                lockT += dt
+                for (r in t.rowLocked.indices) if (lockT >= lockAt[r]) t.rowLocked[r] = true
+            } else lockT = -1.0
         }
     }
 

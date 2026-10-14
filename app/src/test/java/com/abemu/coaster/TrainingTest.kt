@@ -120,7 +120,7 @@ class TrainingTest {
     @Test fun dailyOpening() = with(start("opening")) {
         val i = plc.inputs
         signOff(0)
-        i.mode = KeyMode.AUTO
+        i.mode = KeyMode.AUTO; i.loadFootSwitch = true; i.unloadFootSwitch = true
         press { i.powerOn = it }
         for (set in listOf<(Boolean) -> Unit>({ i.estopPressed = it }, { i.loadStandEstop = it }, { i.unloadStandEstop = it })) {
             set(true); run(0.5); set(false); run(0.5); reset()

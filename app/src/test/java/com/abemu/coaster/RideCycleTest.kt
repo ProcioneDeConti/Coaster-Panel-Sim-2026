@@ -112,7 +112,7 @@ class RideCycleTest {
     private fun runCycles(profile: RideProfile, trains: Int, dispatches: Int, configure: (RidePlc) -> Unit = {}): RidePlc {
         val plc = RidePlc(Plant(profile, trains))
         configure(plc)
-        plc.inputs.mode = KeyMode.AUTO
+        plc.inputs.mode = KeyMode.AUTO; plc.inputs.loadFootSwitch = true; plc.inputs.unloadFootSwitch = true
         press(plc) { plc.inputs.powerOn = it }
         press(plc) { plc.inputs.rideStart = it }
         step(plc, 7.0)
@@ -165,7 +165,7 @@ class RideCycleTest {
     private fun rollback(spec: CoasterSpec) {
         val plc = RidePlc(Plant(RideProfile.create(spec), 1))
         plc.plant.faults.launchUnderspeed = true
-        plc.inputs.mode = KeyMode.AUTO
+        plc.inputs.mode = KeyMode.AUTO; plc.inputs.loadFootSwitch = true; plc.inputs.unloadFootSwitch = true
         press(plc) { plc.inputs.powerOn = it }
         press(plc) { plc.inputs.rideStart = it }
         step(plc, 7.0)
@@ -215,7 +215,7 @@ class RideCycleTest {
     @Test fun swingLaunchUsesSpikeAndCrests() {
         val plc = RidePlc(Plant(RideProfile.create(CoasterLibrary.byId("tt2")), 1))
         val i = plc.inputs
-        i.mode = KeyMode.AUTO
+        i.mode = KeyMode.AUTO; i.loadFootSwitch = true; i.unloadFootSwitch = true
         press(plc) { i.powerOn = it }; press(plc) { i.rideStart = it }; step(plc, 7.0)
         press(plc) { i.loadReady = it }; press(plc) { i.unloadReady = it }
         i.dispatchL = true; i.dispatchR = true; step(plc, 0.2); i.dispatchL = false; i.dispatchR = false
@@ -240,7 +240,7 @@ class RideCycleTest {
         val plc = RidePlc(Plant(RideProfile.create(CoasterLibrary.byId("tt2")), 1))
         plc.plant.faults.switchStuck = true
         val i = plc.inputs
-        i.mode = KeyMode.AUTO
+        i.mode = KeyMode.AUTO; i.loadFootSwitch = true; i.unloadFootSwitch = true
         press(plc) { i.powerOn = it }; press(plc) { i.rideStart = it }; step(plc, 7.0)
         press(plc) { i.loadReady = it }; press(plc) { i.unloadReady = it }
         i.dispatchL = true; i.dispatchR = true; step(plc, 0.2); i.dispatchL = false; i.dispatchR = false
@@ -256,7 +256,7 @@ class RideCycleTest {
             val p = RideProfile.create(CoasterLibrary.byId(id))
             val plc = RidePlc(Plant(p, 3))
             val i = plc.inputs
-            i.mode = KeyMode.AUTO; i.singleButtonDispatch = true
+            i.mode = KeyMode.AUTO; i.singleButtonDispatch = true; i.loadFootSwitch = true; i.unloadFootSwitch = true
             press(plc) { i.powerOn = it }; press(plc) { i.rideStart = it }; step(plc, 7.0)
             var courseWait = 0.0
             val mid = (1 until p.blocks.size).filter { p.blocks[it].kind == com.abemu.coaster.sim.BlockKind.BRAKE_RUN && it != p.transferBlock }
@@ -279,7 +279,7 @@ class RideCycleTest {
 
     @Test fun standEstopIsFirstOut() {
         val plc = RidePlc(Plant(RideProfile.create(ProfileType.LIFT), 3))
-        plc.inputs.mode = KeyMode.AUTO
+        plc.inputs.mode = KeyMode.AUTO; plc.inputs.loadFootSwitch = true; plc.inputs.unloadFootSwitch = true
         press(plc) { plc.inputs.powerOn = it }
         press(plc) { plc.inputs.rideStart = it }
         step(plc, 7.0)
@@ -302,7 +302,7 @@ class RideCycleTest {
 
     private fun runningLift(): RidePlc {
         val plc = RidePlc(Plant(RideProfile.create(ProfileType.LIFT), 3))
-        plc.inputs.mode = KeyMode.AUTO
+        plc.inputs.mode = KeyMode.AUTO; plc.inputs.loadFootSwitch = true; plc.inputs.unloadFootSwitch = true
         press(plc) { plc.inputs.powerOn = it }
         press(plc) { plc.inputs.rideStart = it }
         step(plc, 7.0)
@@ -365,7 +365,7 @@ class RideCycleTest {
     @Test fun ladderAndIoMapBuildForEveryRide() {
         CoasterLibrary.all.forEach { spec ->
             val plc = RidePlc(Plant(RideProfile.create(spec), 3))
-            plc.inputs.mode = KeyMode.AUTO
+            plc.inputs.mode = KeyMode.AUTO; plc.inputs.loadFootSwitch = true; plc.inputs.unloadFootSwitch = true
             press(plc) { plc.inputs.powerOn = it }
             val rungs = com.abemu.coaster.sim.Ladder.build(plc)
             assertTrue(rungs.isNotEmpty())

@@ -1,0 +1,85 @@
+# Station auto-spiels for the Ballin'-Radley emulator.
+#
+# Each spiel is a header line '== BUTTON LABEL ==' followed by the announcement text.
+# - The label is what the button on the STATION page shows (keep it short; it wraps to two lines).
+# - The text can span several lines; they are joined with spaces.
+# - [ride] is replaced with the ride's name (e.g. Top Thrill 2). Spiels using it are recorded once per ride.
+# - Buttons appear in the order listed here. Add, remove or reorder spiels freely.
+# - Lines starting with # are comments.
+#
+# Voice: ElevenLabs XpZeqQTuSFEd29ztEE53 (GIFFEN - Professional North American Voice)
+# ElevenLabs API key: kept in local.properties (elevenlabs.apiKey), which git ignores.
+== BOARDING ==
+Welcome to [ride]! When the gates open, step carefully forward into the train. Once seated, please find and fasten your seatbelt, lower your lap bar or shoulder harness, and wait for a ride host to check your restraint. Keep your hands, arms, legs, and feet inside the car at all times, and remain seated until the ride comes to a complete and final stop.
+
+== GATES CLOSING ==
+Please step back, the gates are now closing. Please, step back, the gates are now closing.
+
+== AIR GATES ==
+Please stand back, the gates are now opening. Once open, please step through and fill all available seats. 
+
+== RESTRAINT CHECK ==
+Please pull down and then up on your restraint and make sure your seatbelt is fastened. Hands up! As a ride operator will be by to check it.
+
+== SAFETY CHECK ==
+Attention riders, loose articles, cellphones, and recording of any kind are strictly prohibited on all rides. Please secure loose items deep in a pocket, a pouch, or the lockers in the station. We are not responsible for items lost or damaged while riding.
+
+== DISPATCH ==
+Restraints secure. Thank you for riding, and enjoy your ride on [ride]!
+
+== UNLOAD ==
+Welcome back! Please wait for your lap bar to fully rise before exiting. Collect your belongings and exit through the exit gates. Enjoy the rest of your day at America's Rockin' Roller Coast, ride on!
+
+== SINGLE RIDERS ==
+We are now filling single seats. Single riders, please follow the operator's instructions to your row.
+
+== RIDER REQS ==
+Reminder: riders must meet the posted height requirement. Guests with heart conditions, back or neck problems, or who are expecting should not ride.
+
+== DELAY SHORT ==
+Attention riders, at this time we are experiencing a short delay in operations. Please remain seated, facing forwards in an upright position, with your restraint fastened, as the train may move at any time.
+
+== DELAY MAINT ==
+Attention riders, at this time we are experiencing a delay in operations that requires the assistance of our maintenance team. Thank you for your patience.
+
+== REMAIN SEATED ==
+Attention riders, please remain seated with your restraints secured. A ride operator will be with you shortly. Do not attempt to exit.
+
+== EVACUATION ==
+Attention riders, at this time we are experiencing a delay in operation that requires the evacuation of one or more coaster trains. Please remain seated, facing forwards, and remain calm as our maintenance team arrives to assist you.
+
+== TRANSFER ON ==
+Attention riders, we are experiencing a brief delay in operation as we transfer on a train. We will resume operation shortly.
+
+== TRANSFER OFF ==
+Attention riders, we are experiencing a brief delay in operation as we transfer off a train. We will resume operation shortly.
+
+== BACK IN OPERATION ==
+Attention riders, thank you for your patience. [ride] is now resuming operation.
+
+== WEATHER HOLD ==
+Attention guests, due to inclement weather conditions in the area, [ride] is temporarily closed.
+
+== QUEUE CLOSED ==
+Attention guests, the line for [ride] is now closed. Thank you for visiting.
+
+== SMOKING ==
+Attention guests, smoking and vaping are strictly prohibited within park boundaries. Smoking areas may be found outside of the park.
+
+== SECURITY ==
+At this time, we require the assistance of our security team. Please remain seated, facing forwards, as we will resume operation soon and the train may move at any time.
+
+== RECHECK ==
+Operators, please recheck all restraints.
+
+== CROSS ==
+Controls disabled. Operator safe to cross.
+
+== UNLOCK ==
+Restraints unlocked from main control. Please recheck all restraints.
+
+== TRACK CLEAR ==
+Operators cross check, ensure track and safety areas are clear.
+
+== CALL ==
+Operator, please call main. Thank you.

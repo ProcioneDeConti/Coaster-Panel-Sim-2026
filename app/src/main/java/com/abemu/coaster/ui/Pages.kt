@@ -31,7 +31,9 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -76,19 +78,20 @@ fun StationPage(vm: SimViewModel) {
                                 Offset(x0 + 10, trainY + 12), Size(carW - 20, trainH - 24))
                         }
                     }
-                    // Gates (load side, bottom): each leaf swings 90° about its hinge toward the load platform,
-                    // with a position indicator whose bar is horizontal when closed and vertical when open.
+                    // Gates (load side, bottom): set back from the train so each leaf swings 90° about its hinge
+                    // in toward the train, as on the real platform. The position indicator's bar is horizontal when
+                    // closed and vertical when open.
                     val open = plant.gatePos.toFloat().coerceIn(0f, 1f)
-                    val gateY = trainY + trainH + 18
+                    val len = minOf(carW * 0.55f, 110f)
+                    val gateY = trainY + trainH + 8 + len + 10
                     val gateColor = if (plant.gateClosedSensor) Color(0xFF2EBD59) else Color(0xFFFFB300)
                     val ang = open * (PI / 2).toFloat()
                     for (r in 0 until rows) {
                         val x0 = margin + r * carW
                         val hinge = Offset(x0 + 6, gateY)
-                        val len = carW * 0.55f
                         // Fixed fence from the gate opening to the next row
                         drawLine(Color(0xFF424242), Offset(x0 + 6 + len, gateY), Offset(x0 + carW - 2, gateY), 4f)
-                        drawLine(gateColor, hinge, hinge + Offset(len * cos(ang), len * sin(ang)), 6f)
+                        drawLine(gateColor, hinge, hinge + Offset(len * cos(ang), -len * sin(ang)), 6f)
                         drawCircle(Color(0xFF424242), 4f, hinge)
                         val c = Offset(x0 + carW * 0.8f, gateY + 28)
                         val rad = minOf(10f, carW * 0.12f)
@@ -117,13 +120,15 @@ fun StationPage(vm: SimViewModel) {
                 DispatchTimer(vm, Modifier.weight(1.3f))
                 HmiFrame("OPERATOR STANDS", Modifier.weight(1f)) {
                     StandStatus("Load stand", plc.inputs.loadStandEstop, plc.loadReady)
+                    FootSwitch("Load foot switch", plc.inputs.loadFootSwitch) { plc.inputs.loadFootSwitch = it }
                     StandStatus("Unload stand", plc.inputs.unloadStandEstop, plc.unloadReady)
+                    FootSwitch("Unload foot switch", plc.inputs.unloadFootSwitch) { plc.inputs.unloadFootSwitch = it }
                     StandStatus("Console", plc.inputs.estopPressed, null)
                 }
             }
         }
         Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        if (plc.hasSwitch) SwitchTrackFrame(plc)
+        if (plc.hasSwitch) SwitchTrackFrame(vm)
         HmiFrame("DISPATCH PERMISSIVES", Modifier.fillMaxWidth().weight(1f)) {
             plc.permissives.forEach { p ->
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -140,6 +145,7 @@ fun StationPage(vm: SimViewModel) {
                 Text(if (plc.dispatchReady) "READY TO DISPATCH" else "NOT READY", color = Color.White, fontWeight = FontWeight.Bold)
             }
         }
+        SpielPanel(plc.profile.spec.id, plc.profile.name, Modifier.fillMaxWidth())
         }
     }
 }
@@ -147,7 +153,9 @@ fun StationPage(vm: SimViewModel) {
 /** Top-down view of the swing-launch switch track: a sliding table carrying a curved piece (station line to
  *  launch track) and a straight piece (spike line to launch track). */
 @Composable
-private fun SwitchTrackFrame(plc: com.abemu.coaster.sim.RidePlc) {
+private fun SwitchTrackFrame(vm: SimViewModel) {
+    vm.frame.longValue // recompose each update (the PLC object itself never changes)
+    val plc = vm.plc
     val p = plc.profile
     val plant = plc.plant
     val pos = plant.switchPos.toFloat()
@@ -178,30 +186,51 @@ private fun SwitchTrackFrame(plc: com.abemu.coaster.sim.RidePlc) {
             val moving = Color(0xFFFFB300)
             val curved = Path().apply {
                 moveTo(xA, yS - off)
-                cubicTo((xA + xB) / 2, yS - off, (xA + xB) / 2, yL - off, xB, yL - off)
+                cubicTo(xA + (xB - xA) / 3, yS - off, xA + 2 * (xB - xA) / 3, yL - off, xB, yL - off)
             }
             drawPath(curved, if (atStation) good else if (atSpike) Color(0xFF7A8189) else moving, style = Stroke(6f))
             drawLine(if (atSpike) good else if (atStation) Color(0xFF7A8189) else moving,
                 Offset(xA, yL + gap - off), Offset(xB, yL + gap - off), 6f)
-            // Trains (front marker + body), placed by where they are on the layout
+            // Trains as cars, at one uniform scale (the table's length sets pixels per metre) so they move smoothly
+            // on and off the table, and clipped to the frame so they slide in and out at the edges.
             val j = p.spikeJunction
-            val sx = { d: Double -> (xA - d / 40.0 * xA).toFloat().coerceAtLeast(4f) } // distance back from the table
-            plant.trains.forEach { t ->
-                val c = trainColors[(t.id - 1) % trainColors.size]
-                val pt = when {
-                    t.spike > 0 -> Offset(sx(t.spike), yL)
-                    p.inRange(t.s, j, p.switchEnd) -> {
-                        val f = (p.ahead(j, t.s) / (p.switchEnd - j)).toFloat()
-                        if (atSpike) Offset(xA + f * (xB - xA), yL) else Offset(xA + f * (xB - xA), yS + f * gap)
-                    }
-                    p.inRange(t.s, p.switchEnd, p.launchEnd) ->
-                        Offset((xB + p.ahead(p.switchEnd, t.s) / 40.0 * (size.width - xB)).toFloat().coerceAtMost(size.width - 4f), yL)
-                    p.inRange(t.s, j - 40, j) -> Offset(sx(p.ahead(t.s, j)), yS)
-                    else -> null
+            val k = ((xB - xA) / (p.switchEnd - j)).toFloat()
+            val reach = (size.width / k + p.trainLength).toDouble() // metres either side worth drawing
+            // Canvas point of track position [s], or [spike] metres up the spike line (the spike line is drawn level).
+            fun place(s: Double, spike: Double): Offset = when {
+                spike > 0 -> Offset(xA - spike.toFloat() * k, yL)
+                p.inRange(s, j, p.switchEnd) -> {
+                    val f = (p.ahead(j, s) / (p.switchEnd - j)).toFloat()
+                    if (atStation) {
+                        // Curved piece: the same cubic as drawn above; x is linear in f.
+                        val u = 1 - f
+                        Offset(xA + f * (xB - xA), yS * (u * u * u + 3 * u * u * f) + yL * (3 * u * f * f + f * f * f))
+                    } else Offset(xA + f * (xB - xA), yL)
                 }
-                if (pt != null) {
-                    drawRect(c, pt - Offset(16f, 7f), Size(18f, 14f))
-                    drawCircle(Color.White, 3f, pt)
+                plant.signedDist(j, s) < 0 -> Offset(xA - p.ahead(s, j).toFloat() * k, yS)
+                else -> Offset(xB + p.ahead(p.switchEnd, s).toFloat() * k, yL)
+            }
+            val carLen = p.trainLength / p.spec.cars
+            clipRect {
+                plant.trains.forEach { tr ->
+                    val near = tr.spike > 0 || tr.tailOnSpike || abs(plant.signedDist(j, tr.s)) < reach
+                    if (!near) return@forEach
+                    val c = trainColors[(tr.id - 1) % trainColors.size]
+                    val back = if (tr.tailOnSpike && tr.spike <= 0) p.ahead(j, tr.s) else 0.0
+                    fun at(d: Double) = when {
+                        tr.spike > 0 -> place(0.0, tr.spike + d)
+                        tr.tailOnSpike && d > back -> place(0.0, d - back)
+                        else -> place(p.wrap(tr.s - d), 0.0)
+                    }
+                    for (n in p.spec.cars - 1 downTo 0) {
+                        val path = Path()
+                        var d = n * carLen + 0.15
+                        path.moveTo(at(d).x, at(d).y)
+                        while (d < (n + 1) * carLen - 0.15) { d = minOf(d + 0.25, (n + 1) * carLen - 0.15); path.lineTo(at(d).x, at(d).y) }
+                        drawPath(path, Color(0xFF101418), style = Stroke(16f, cap = StrokeCap.Butt))
+                        drawPath(path, c, style = Stroke(12f, cap = StrokeCap.Butt))
+                    }
+                    drawCircle(Color.White, 4f, at(0.0))
                 }
             }
         }
@@ -574,6 +603,15 @@ private fun DispatchTimer(vm: SimViewModel, modifier: Modifier) {
         ValueBox("Average (last 20)", plc.avgInterval?.let { "%.0f s".format(it) } ?: "—")
         val riders = plc.profile.ridersPerTrain
         ValueBox("Capacity at average", plc.avgInterval?.let { "${(3600 / it * riders).toInt()} riders/h" } ?: "—")
+    }
+}
+
+/** Stand foot switch: tap to step on / off. Lit while an operator is standing on it. */
+@Composable
+private fun FootSwitch(name: String, on: Boolean, set: (Boolean) -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        HmiLabel("  $name", 10.sp, color = Hmi.Dim, modifier = Modifier.weight(1f))
+        HmiButton(if (on) "AT STAND" else "STEP ON", active = on, activeColor = Hmi.Ok) { Haptics.tick(); set(!on) }
     }
 }
 

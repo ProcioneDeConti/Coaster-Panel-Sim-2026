@@ -25,7 +25,7 @@ object WebMap {
         val n = (p.length / step).toInt()
         return buildString {
             append("{\"version\":$version,\"name\":${q(p.name)},\"park\":${q(p.spec.park ?: "")},")
-            append("\"length\":${d(p.length)},\"step\":$step,\"trainLength\":${d(p.trainLength)},\"points\":[")
+            append("\"length\":${d(p.length)},\"step\":$step,\"trainLength\":${d(p.trainLength)},\"cars\":${p.spec.cars},\"points\":[")
             for (i in 0..n) {
                 val (x, y) = p.planPoint(i * step)
                 if (i > 0) append(',')
@@ -119,7 +119,8 @@ function draw(){if(!geo)return;cx.clearRect(0,0,X.w,X.h);cx.lineCap='round';
   const q=P(b.start);cx.fillStyle='#fff';cx.beginPath();cx.arc(q[0],q[1],3.5,0,7);cx.fill();
   const m=P(b.start+span(b.start,b.end)/2);cx.font='bold 13px system-ui';cx.fillStyle='#cfd8dc';cx.fillText(b.tag,m[0]+8,m[1]-8);
   if(b.stop!=null&&st){const o=st.brakes[i];const s=P(b.stop);cx.fillStyle=o==1?'#43a047':o==0?'#e53935':'#ffb300';cx.fillRect(s[0]-5,s[1]-5,10,10)}});
- if(st)st.trains.forEach(t=>{const c=trainColors[(t.id-1)%trainColors.length];cx.strokeStyle=c;cx.lineWidth=11;path(t.s-geo.trainLength,t.s);
+ if(st)st.trains.forEach(t=>{const c=trainColors[(t.id-1)%trainColors.length];const n=geo.cars||5,cl=geo.trainLength/n;for(let k=n-1;k>=0;k--){const a=t.s-k*cl-cl*0.85,b=t.s-k*cl;cx.strokeStyle='#101418';cx.lineWidth=14;path(a,b);cx.strokeStyle=c;cx.lineWidth=11;path(a,b)}
+  {const h=P(t.s);cx.fillStyle='#fff';cx.beginPath();cx.arc(h[0],h[1],3.5,0,7);cx.fill()}
   const f=P(t.s);cx.fillStyle=c;cx.font='bold 13px system-ui';const label='T'+t.id+' '+t.v.toFixed(1);const w=cx.measureText(label).width;
   cx.fillRect(f[0]+6,f[1]-22,w+8,18);cx.fillStyle='#fff';cx.fillText(label,f[0]+10,f[1]-8)})}
 function panel(){if(!st||!geo)return;

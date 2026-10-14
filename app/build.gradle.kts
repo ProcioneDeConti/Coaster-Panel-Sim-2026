@@ -8,6 +8,8 @@ plugins {
 
 android {
     namespace = "com.abemu.coaster"
+    // Station auto-spiel text (spiels/spiels.txt) ships as an asset; its recordings live in src/main/assets/spiels.
+    sourceSets["main"].assets.srcDir("../spiels")
     compileSdk = 36
 
     defaultConfig {

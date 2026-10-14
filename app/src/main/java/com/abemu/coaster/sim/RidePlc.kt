@@ -39,6 +39,9 @@ class Inputs(blocks: Int) {
     var gatesClose = false
     var loadReady = false
     var unloadReady = false
+    /** Stand foot switches: held down while an operator is standing at the stand. */
+    var loadFootSwitch = false
+    var unloadFootSwitch = false
     var liftJog = false
     /** Emulator convenience: either dispatch button acts as a valid two-hand press. */
     var singleButtonDispatch = false
@@ -91,7 +94,8 @@ class RidePlc(val plant: Plant) {
     private var stateT = 0.0
     private var launchT = 0.0
     private var transferT = 0.0
-    private var launchTrain = -1
+    var launchTrain = -1
+        private set
     private var launchExitSeen = 0
     /** Swing launch stage: 0 forward, 1 backward, 2 final forward (single launches go straight to 2). */
     var launchStage = 2; private set
@@ -135,6 +139,10 @@ class RidePlc(val plant: Plant) {
     var switchCmd = false; private set
     private var switchTravelT = 0.0
     val estopPbOk get() = fx("ESTOP_PB_NC", !inputs.estopPressed)
+    val loadAtStand get() = fx("LOAD_FOOT_SW", inputs.loadFootSwitch)
+    val unloadAtStand get() = fx("UNLOAD_FOOT_SW", inputs.unloadFootSwitch)
+    /** Seconds allowed for every row to lock after a restraint close, before a row is flagged. */
+    val restraintLockTimeout get() = profile.rows * 0.6 + 2.5
     val loadEstopOk get() = fx("LOAD_STAND_ESTOP_NC", !inputs.loadStandEstop)
     val unloadEstopOk get() = fx("UNLOAD_STAND_ESTOP_NC", !inputs.unloadStandEstop)
     val remoteEstopOk get() = fx("REMOTE_ESTOP_OK", !plant.faults.safetyCircuit)
@@ -188,6 +196,22 @@ class RidePlc(val plant: Plant) {
     fun followClear(i: Int) = nextClear(i) || (stationZone(next(i)) && departing(next(i)) && !entry(next(i)) &&
         plant.trainAtStop(i)?.let { it.id == occ[i] && abs(it.v) < 0.05 } == true)
     fun trainSpeed(id: Int) = plant.trains.firstOrNull { it.id == id }?.v ?: 0.0
+
+    /** HMI status of one train: GOOD running normally, CHECKING while the PLC verifies it, BAD when stopped on a fault. */
+    fun trainStatus(t: Train): TrainStatus {
+        val launching = t.id == launchTrain
+        return when {
+            eStopped || (launching && launchState == LaunchState.ROLLBACK) -> TrainStatus.BAD
+            state == RideState.CSTOP -> TrainStatus.CHECKING
+            launching && launchState == LaunchState.VERIFY -> TrainStatus.CHECKING
+            occ[1] == t.id && profile.type == ProfileType.LAUNCH && launchState in setOf(LaunchState.IDLE, LaunchState.CHARGING) &&
+                plant.trainAtStop(1)?.id == t.id -> TrainStatus.CHECKING // at the launch: switch / LSM checks
+            plant.stationTrain()?.id == t.id -> TrainStatus.CHECKING // restraint, gate and operator checks
+            profile.blocks.any { it.kind == BlockKind.UNLOAD && occ[it.index] == t.id && plant.trainAtStop(it.index)?.id == t.id } ->
+                TrainStatus.CHECKING
+            else -> TrainStatus.GOOD
+        }
+    }
 
     val trainInStation get() = occ[0] != -1 && plant.stationTrain() != null
     val allRowsLocked get() = (0 until profile.rows).all { rowLocked(it) }
@@ -324,7 +348,7 @@ class RidePlc(val plant: Plant) {
         for (r in 0 until profile.rows) {
             val bad = stTrain != null && !restraintCmd && !rowLocked(r)
             rowFaultT[r] = if (bad) rowFaultT[r] + dt else 0.0
-            alarms.condition("ROW$r", "Station: row ${r + 1} restraint not locked", Severity.WARNING, rowFaultT[r] > 2.5)
+            alarms.condition("ROW$r", "Station: row ${r + 1} restraint not locked", Severity.WARNING, rowFaultT[r] > restraintLockTimeout)
         }
         gateFaultT = if (!gateCmd && !gatesClosed) gateFaultT + dt else 0.0
         alarms.condition("GATE", "Station air gates – closed switch not made", Severity.WARNING, gateFaultT > 3.0)
@@ -396,8 +420,15 @@ class RidePlc(val plant: Plant) {
             } else alarms.info("STN", "Gate open refused – no train stopped in station")
         }
         if (rise("gClose", i.gatesClose)) gateCmd = false
-        if (rise("ldRdy", i.loadReady)) loadReady = !loadReady
-        if (rise("unRdy", i.unloadReady)) unloadReady = !unloadReady
+        // An operator's ready is only accepted (and only held) while their foot switch shows them at the stand.
+        if (rise("ldRdy", i.loadReady)) {
+            if (loadAtStand) loadReady = !loadReady else alarms.info("STN", "Load ready refused – no operator at the load stand (foot switch)")
+        }
+        if (rise("unRdy", i.unloadReady)) {
+            if (unloadAtStand) unloadReady = !unloadReady else alarms.info("STN", "Unload ready refused – no operator at the unload stand (foot switch)")
+        }
+        if (!loadAtStand) loadReady = false
+        if (!unloadAtStand) unloadReady = false
         val restraintsOk = allRowsLocked && !restraintCmd
         val gatesOk = gatesClosed && !gateCmd
 
@@ -408,6 +439,8 @@ class RidePlc(val plant: Plant) {
             Permissive("Train stopped at station", inStation),
             Permissive("Restraints locked – all rows", restraintsOk),
             Permissive("Station gates closed", gatesOk),
+            Permissive("Load operator at stand (foot switch)", loadAtStand),
+            Permissive("Unload operator at stand (foot switch)", unloadAtStand),
             Permissive("Load side operator ready", loadReady),
             Permissive("Unload side operator ready", unloadReady),
             Permissive("${profile.blocks[1].tag} ${profile.blocks[1].name} clear", nextClear(0)),
@@ -731,3 +764,5 @@ class RidePlc(val plant: Plant) {
         loadReady = false; unloadReady = false
     }
 }
+
+enum class TrainStatus { GOOD, CHECKING, BAD }

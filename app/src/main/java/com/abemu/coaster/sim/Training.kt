@@ -247,6 +247,7 @@ object Autopilot {
                 if (press(plc, stop) { i.gatesClose = it }) return true
                 if (press(plc, stop) { i.restraintClose = it }) return true
                 if (run(plc, 7.0, stop)) return true
+                i.loadFootSwitch = true; i.unloadFootSwitch = true
                 if (press(plc, stop) { i.loadReady = it }) return true
                 if (press(plc, stop) { i.unloadReady = it }) return true
                 if (run(plc, 60.0) { stop() || plc.dispatchReady } && stop()) return true

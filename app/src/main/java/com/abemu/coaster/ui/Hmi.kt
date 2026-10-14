@@ -327,6 +327,8 @@ fun HmiButton(
     active: Boolean = false,
     activeColor: Color = Hmi.Ok,
     fontSize: TextUnit = 11.sp,
+    maxLines: Int = 1,
+    hPad: androidx.compose.ui.unit.Dp = 10.dp,
     onClick: () -> Unit,
 ) {
     Box(
@@ -341,12 +343,12 @@ fun HmiButton(
             )
             .border(1.dp, Color(0xFF6A7178), RoundedCornerShape(4.dp))
             .clickable(enabled = enabled) { Haptics.tick(); onClick() }
-            .padding(horizontal = 10.dp, vertical = 7.dp),
+            .padding(horizontal = hPad, vertical = 7.dp),
         contentAlignment = Alignment.Center,
     ) {
         Text(
             text, fontSize = fontSize, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center,
-            maxLines = 1, overflow = TextOverflow.Ellipsis,
+            maxLines = maxLines, overflow = TextOverflow.Ellipsis,
             color = if (!enabled) Color(0xFF8A8A8A) else if (active) Color.White else Hmi.Text,
         )
     }

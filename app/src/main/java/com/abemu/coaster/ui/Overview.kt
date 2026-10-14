@@ -33,6 +33,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.abemu.coaster.SimViewModel
 import com.abemu.coaster.sim.BlockKind
+import com.abemu.coaster.sim.TrainStatus
 import com.abemu.coaster.sim.RideProfile
 import com.abemu.coaster.sim.LaunchState
 import com.abemu.coaster.sim.ProfileType
@@ -40,6 +41,42 @@ import com.abemu.coaster.sim.RidePlc
 import kotlin.math.abs
 
 internal val trainColors = listOf(Color(0xFF1565C0), Color(0xFF8E24AA), Color(0xFF00897B), Color(0xFFEF6C00))
+
+/**
+ * Draws a train as linked cars that bend with the track. [at] gives the canvas point [d] metres behind the head.
+ * Cars are sized in pixels so they stay readable at any zoom; the lead car carries a white nose.
+ */
+internal fun androidx.compose.ui.graphics.drawscope.DrawScope.drawTrainCars(
+    cars: Int, color: Color, width: Float = 14f, carPx: Float = 34f, gapPx: Float = 8f, at: (Double) -> Offset,
+) {
+    val total = cars * (carPx + gapPx)
+    // Walk back from the head, recording (pixel distance, point). Big jumps (wrap-around in the profile) are skipped.
+    val pts = ArrayList<Pair<Float, Offset>>()
+    var prev = at(0.0)
+    var px = 0f
+    pts += 0f to prev
+    var d = 0.0
+    while (px < total && d < 600.0) {
+        d += 0.25
+        val p = at(d)
+        val step = (p - prev).getDistance()
+        if (step < 40f) px += step
+        prev = p
+        pts += px to p
+    }
+    val outline = Color(0xFF101418)
+    for (k in cars - 1 downTo 0) {
+        val f = k * (carPx + gapPx)
+        val r = f + carPx
+        val seg = pts.filter { it.first in f..r }.map { it.second }
+        if (seg.size < 2) continue
+        val path = Path().apply { moveTo(seg[0].x, seg[0].y); seg.drop(1).forEach { lineTo(it.x, it.y) } }
+        drawPath(path, outline, style = Stroke(width + 4f, cap = StrokeCap.Butt))
+        drawPath(path, color, style = Stroke(width, cap = StrokeCap.Butt))
+    }
+    drawCircle(outline, width * 0.42f, pts[0].second)
+    drawCircle(Color.White, width * 0.3f, pts[0].second)
+}
 
 @Composable
 fun OverviewPage(vm: SimViewModel) {
@@ -224,26 +261,20 @@ fun TrackDiagram(plc: RidePlc, modifier: Modifier = Modifier, ghost: RideProfile
         // Trains
         plant.trains.forEach { t ->
             val c = trainColors[(t.id - 1) % trainColors.size]
+            val sx = x(profile.spikeJunction)
+            val back = if (t.tailOnSpike && t.spike <= 0) profile.ahead(profile.spikeJunction, t.s) else 0.0
+            drawTrainCars(profile.spec.cars, c) { d ->
+                when {
+                    t.spike > 0 -> Offset(sx, spikeY(t.spike + d))
+                    t.tailOnSpike && d > back -> Offset(sx, spikeY(d - back))
+                    else -> pt(t.s - d)
+                }
+            }
             if (t.spike > 0) {
-                val sx = x(profile.spikeJunction)
-                val lo = spikeY((t.spike - profile.trainLength).coerceAtLeast(0.0))
-                val hi = spikeY(t.spike)
-                drawLine(c, Offset(sx, lo), Offset(sx, hi), strokeWidth = 11f, cap = StrokeCap.Round)
-                drawText(tm, "T${t.id} ${"%.1f".format(abs(t.v))}", Offset(sx - 18f, hi - 22f),
+                drawText(tm, "T${t.id} ${"%.1f".format(abs(t.v))}", Offset(sx - 18f, spikeY(t.spike) - 32f),
                     TextStyle(color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold, background = c))
                 return@forEach
             }
-            val tp = Path()
-            var q = t.s - profile.trainLength
-            tp.moveTo(x(profile.wrap(q)), y(q))
-            var lastX = x(profile.wrap(q))
-            while (q <= t.s) {
-                val xx = x(profile.wrap(q))
-                if (abs(xx - lastX) > w / 2) tp.moveTo(xx, y(q)) else tp.lineTo(xx, y(q))
-                lastX = xx
-                q += 1.0
-            }
-            drawPath(tp, c, style = Stroke(11f, cap = StrokeCap.Round))
             val head = pt(t.s)
             drawText(
                 tm, "T${t.id} ${"%.1f".format(abs(t.v))}", head + Offset(-18f, -32f),
@@ -430,22 +461,26 @@ fun PlanDiagram(
         // Trains
         plant.trains.forEach { t ->
             val c = trainColors[(t.id - 1) % trainColors.size]
-            val head: Offset
-            if (t.spike > 0 || t.tailOnSpike) {
-                // Part (or all) of the train is behind the switch on the spike line.
-                val onCircuit = if (t.spike > 0) 0.0 else profile.ahead(profile.spikeJunction, t.s).coerceAtMost(profile.trainLength)
-                if (onCircuit > 0) drawPath(seg(profile.spikeJunction, t.s), c, style = Stroke(13f, cap = StrokeCap.Round))
-                val lo = t.spike
-                val hi = (t.spike + profile.trainLength - onCircuit).coerceAtMost(profile.spikeLength)
-                val a = xf.planPt(profile.spikePlanPoint(lo))
-                val b = xf.planPt(profile.spikePlanPoint(hi))
-                drawLine(c, a, b, 13f, StrokeCap.Round)
-                head = if (t.spike > 0) a else pt(t.s)
-            } else {
-                drawPath(seg(t.s - profile.trainLength, t.s), c, style = Stroke(13f, cap = StrokeCap.Round))
-                head = pt(t.s)
+            // One rectangle per train, lying along the track at its front (up the spike line when on it).
+            // Outline: green = normal, yellow = PLC checking it, red = stopped on a fault.
+            fun spikeAt(d: Double) = xf.planPt(profile.spikePlanPoint(d.coerceIn(0.0, profile.spikeLength)))
+            val head = if (t.spike > 0) spikeAt(t.spike) else pt(t.s)
+            val tail = if (t.spike > 0) spikeAt(t.spike + 6) else pt(t.s - 6)
+            val dir = (head - tail).let { v -> if (v.getDistance() > 0.01f) v / v.getDistance() else Offset(1f, 0f) }
+            val nrm = Offset(-dir.y, dir.x)
+            val ring = when (plc.trainStatus(t)) {
+                TrainStatus.GOOD -> Color(0xFF00E676)
+                TrainStatus.CHECKING -> Color(0xFFFFD600)
+                TrainStatus.BAD -> Color(0xFFFF1744)
             }
-            drawCircle(Color.White, 4f, head)
+            fun rect(front: Float, back: Float, half: Float) = Path().apply {
+                val a = head + dir * front
+                val b = head - dir * back
+                moveTo((a + nrm * half).x, (a + nrm * half).y); lineTo((b + nrm * half).x, (b + nrm * half).y)
+                lineTo((b - nrm * half).x, (b - nrm * half).y); lineTo((a - nrm * half).x, (a - nrm * half).y); close()
+            }
+            drawPath(rect(7f, 25f, 10f), ring)
+            drawPath(rect(4f, 22f, 7f), c)
             drawText(tm, "T${t.id} ${"%.1f".format(kotlin.math.abs(t.v))}", head + Offset(8f, -22f),
                 TextStyle(color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold, background = c))
         }
