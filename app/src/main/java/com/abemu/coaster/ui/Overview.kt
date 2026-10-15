@@ -23,6 +23,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
@@ -153,7 +154,7 @@ fun BlockStatusFrame(plc: com.abemu.coaster.sim.RidePlc, modifier: Modifier = Mo
 /** Side-elevation track diagram with live block occupancy, brakes, sensors and trains. */
 @Composable
 fun TrackDiagram(plc: RidePlc, modifier: Modifier = Modifier, ghost: RideProfile? = null) {
-    val tm = rememberTextMeasurer()
+    val tm = rememberTextMeasurer(cacheSize = 64)
     val profile = plc.profile
     val plant = plc.plant
     val blink = flasher()
@@ -376,7 +377,7 @@ fun PlanDiagram(
     onTapTrack: ((Double) -> Unit)? = null,
     overlay: (androidx.compose.ui.graphics.drawscope.DrawScope.(PlanTransform) -> Unit)? = null,
 ) {
-    val tm = rememberTextMeasurer()
+    val tm = rememberTextMeasurer(cacheSize = 64)
     val profile = plc.profile
     val plant = plc.plant
     val blink = flasher()
@@ -390,7 +391,7 @@ fun PlanDiagram(
     // Reused across frames so the cached track paths survive; rebuilt on a new ride or size.
     val xfCache = remember(profile) { arrayOfNulls<PlanTransform>(1) }
     val night = Night.on
-    Canvas(modifier.background(if (night) Color(0xFF060A0F) else Color(0xFF0F1A24)).then(tapMod)) {
+    Canvas(modifier.graphicsLayer().background(if (night) Color(0xFF060A0F) else Color(0xFF0F1A24)).then(tapMod)) {
         val xf = xfCache[0]?.takeIf { it.width == size.width && it.height == size.height }
             ?: PlanTransform(profile, size.width, size.height).also { xfCache[0] = it }
         fun pt(s: Double) = xf.pt(s)

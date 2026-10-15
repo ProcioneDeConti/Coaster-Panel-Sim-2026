@@ -26,6 +26,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
@@ -149,6 +150,7 @@ fun PushButton(
     Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
         Canvas(
             Modifier
+                .graphicsLayer() // own cached layer: redrawn only when this device changes
                 .size(size)
                 .pointerInput(Unit) {
                     awaitEachGesture {
@@ -189,7 +191,7 @@ fun PushButton(
 @Composable
 fun PilotLight(legend: String, color: Color, lit: Boolean, modifier: Modifier = Modifier, size: Dp = 34.dp) {
     Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
-        Canvas(Modifier.size(size)) {
+        Canvas(Modifier.graphicsLayer().size(size)) {
             val r = this.size.minDimension / 2
             val night = Night.on
             if (lit) {
@@ -235,6 +237,7 @@ fun EStopButton(
     Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
         Canvas(
             Modifier
+                .graphicsLayer() // own cached layer: redrawn only when this device changes
                 .size(size)
                 .pointerInput(pressed) {
                     detectTapGestures(
@@ -284,13 +287,14 @@ fun KeySwitch(
     modifier: Modifier = Modifier,
     size: Dp = 116.dp,
 ) {
-    val tm = rememberTextMeasurer()
+    val tm = rememberTextMeasurer(cacheSize = 64)
     val pick by rememberUpdatedState(onSelect)
     val span = 150f
     fun angleOf(i: Int) = -span / 2 + span * i / (positions.size - 1).coerceAtLeast(1)
     Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
         Canvas(
             Modifier
+                .graphicsLayer() // own cached layer: redrawn only when this device changes
                 .size(size)
                 .pointerInput(selected) {
                     detectTapGestures { p ->
@@ -357,6 +361,7 @@ fun PanelSection(title: String, modifier: Modifier = Modifier, content: @Composa
 fun SteelLabel(text: String, modifier: Modifier = Modifier) {
     Box(
         modifier
+            .graphicsLayer()
             .background(
                 Brush.verticalGradient(listOf(Color(0xFFE4E7EA), Color(0xFFB9BEC3), Color(0xFFD3D7DB), Color(0xFFA9AEB4))
                     .map { if (Night.on) lerp(it, Color.Black, 0.6f) else it }),

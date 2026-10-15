@@ -62,7 +62,7 @@ fun TrendsPage(vm: SimViewModel) {
 
 @Composable
 private fun TrendChart(series: List<Series>, minutes: Int, period: Double, yMin: Float, yMax: Float, modifier: Modifier) {
-    val tm = rememberTextMeasurer()
+    val tm = rememberTextMeasurer(cacheSize = 64)
     Column(modifier.fillMaxWidth()) {
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             series.forEach { s ->

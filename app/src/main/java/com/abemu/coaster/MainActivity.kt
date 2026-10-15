@@ -37,6 +37,11 @@ class MainActivity : ComponentActivity() {
         vm.reconfigure()
         Haptics.init(this)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        // Nothing here needs a fast panel (the UI redraws at 30 fps at most): ask for the slowest refresh mode.
+        if (Build.VERSION.SDK_INT >= 30) {
+            display?.supportedModes?.filter { it.physicalWidth == display?.mode?.physicalWidth }?.minByOrNull { it.refreshRate }
+                ?.let { m -> window.attributes = window.attributes.apply { preferredDisplayModeId = m.modeId } }
+        }
         // Draw under the Galaxy Tab S9 Ultra's notch instead of letterboxing; it only covers bezel branding.
         if (Build.VERSION.SDK_INT >= 30) {
             window.attributes = window.attributes.apply {

@@ -31,6 +31,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -244,7 +245,7 @@ private fun TitleBar(vm: SimViewModel, page: HmiPage, onUser: () -> Unit) {
     vm.frame.longValue
     val plc = vm.plc
     Row(
-        Modifier.fillMaxWidth().background(Hmi.Header).padding(horizontal = 8.dp, vertical = 5.dp),
+        Modifier.fillMaxWidth().graphicsLayer().background(Hmi.Header).padding(horizontal = 8.dp, vertical = 5.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(plc.profile.name.uppercase(), color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
@@ -345,6 +346,7 @@ fun HmiButton(
 ) {
     Box(
         modifier
+            .graphicsLayer()
             .background(
                 when {
                     !enabled -> BtnDisabled
@@ -407,7 +409,8 @@ fun Indicator(on: Boolean, onColor: Color = Hmi.Ok, offColor: Color = Hmi.Off, s
 
 @Composable
 fun HmiLabel(text: String, size: TextUnit = 12.sp, bold: Boolean = false, color: Color = Hmi.Text, modifier: Modifier = Modifier) {
-    Text(text, fontSize = size, fontWeight = if (bold) FontWeight.Bold else FontWeight.Normal, color = color, modifier = modifier)
+    Text(text, fontSize = size, fontWeight = if (bold) FontWeight.Bold else FontWeight.Normal, color = color,
+        modifier = modifier.graphicsLayer()) // own layer: unchanged text is not re-painted when a neighbour updates
 }
 
 @Composable
@@ -415,7 +418,7 @@ fun HmiFrame(title: String, modifier: Modifier = Modifier, content: @Composable 
     Column(modifier.background(Hmi.Panel, RoundedCornerShape(3.dp)).border(1.dp, Color(0xFF8C939A), RoundedCornerShape(3.dp))) {
         Text(
             title, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White,
-            modifier = Modifier.fillMaxWidth().background(Color(0xFF51606F)).padding(horizontal = 6.dp, vertical = 3.dp),
+            modifier = Modifier.fillMaxWidth().graphicsLayer().background(Color(0xFF51606F)).padding(horizontal = 6.dp, vertical = 3.dp),
         )
         Column(Modifier.padding(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) { content() }
     }

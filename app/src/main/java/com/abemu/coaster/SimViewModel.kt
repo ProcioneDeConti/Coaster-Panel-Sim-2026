@@ -18,9 +18,8 @@ import com.abemu.coaster.sim.RidePlc
 import com.abemu.coaster.sim.RideProfile
 import com.abemu.coaster.sim.RideState
 import com.abemu.coaster.sim.TagLayout
-import kotlinx.coroutines.android.awaitFrame
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * Owns the simulated controller and runs it in real time: fixed 20 ms PLC scans with the
@@ -83,7 +82,7 @@ class SimViewModel : ViewModel() {
     /** Shows debug-only panels (sound test) on the INSTRUCTOR page. */
     var debugTools by mutableStateOf(false)
     /** Operators must walk the train (check every car) before the load side goes ready. */
-    var restraintWalk by mutableStateOf(true)
+    var restraintWalk by mutableStateOf(false)
     /** Park lighting: night operation dims the HMI and console, makes lamps glow and lights the track on the plan view. */
     var lighting by mutableStateOf(Lighting.DAY)
     val night: Boolean get() = when (lighting) {
@@ -105,10 +104,11 @@ class SimViewModel : ViewModel() {
         viewModelScope.launch {
             var last = System.nanoTime()
             var acc = 0.0
+            var lastUi = 0L
             while (true) {
-                // Step once per display frame (60/120 Hz); the timeout keeps the sim running at
-                // ~20 Hz when no frames come (app in background, screen off) for the web map.
-                withTimeoutOrNull(50) { awaitFrame() }
+                // Fixed 30 Hz tick, not the display rate: the sim catches up in 20 ms scans, and redrawing
+                // at 120 Hz kept the main thread and GPU busy full-time (more than a whole core at idle).
+                delay(33)
                 val now = System.nanoTime()
                 acc = (acc + (now - last) / 1e9 * timeScale).coerceAtMost(0.5)
                 last = now
@@ -123,7 +123,7 @@ class SimViewModel : ViewModel() {
                     plc.plant.step(scanDt)
                     trends.update(plc, scanDt)
                     queue.update(scanDt, plc)
-                    radio.update(scanDt, plc, radioOn)
+                    radio.update(scanDt, plc, radioOn, night, queue.postedWaitMin, weather.windMph)
                     drill?.let { d ->
                         val was = d.finished
                         d.update(scanDt)
@@ -133,7 +133,11 @@ class SimViewModel : ViewModel() {
                 }
                 mapServer.publish(plc, drill)
                 com.abemu.coaster.ui.Night.on = night
-                frame.longValue++
+                // Redraw at 30 fps while something moves, otherwise ~10 fps (enough for lamp flashing and
+                // HMI values). Taps on Compose state still recompose immediately.
+                val moving = plc.plant.trains.any { kotlin.math.abs(it.v) > 0.01 } ||
+                    plc.plant.gatePos in 0.001..0.999
+                if (moving || now - lastUi >= 100_000_000L) { lastUi = now; frame.longValue++ }
             }
         }
     }

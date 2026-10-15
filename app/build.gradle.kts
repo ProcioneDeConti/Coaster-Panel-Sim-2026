@@ -21,6 +21,13 @@ android {
     }
     buildTypes {
         release { isMinifyEnabled = false }
+        // Non-debuggable build signed with the debug key, for day-to-day use on the tablet: debuggable builds run
+        // mostly interpreted with JNI checks on, which made the UI several times more expensive (battery drain).
+        create("fast") {
+            initWith(getByName("release"))
+            signingConfig = signingConfigs.getByName("debug")
+            matchingFallbacks += "release"
+        }
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
