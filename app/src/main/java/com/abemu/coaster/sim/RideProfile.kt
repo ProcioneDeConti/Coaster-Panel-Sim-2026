@@ -70,7 +70,7 @@ class RideProfile(
     val switchEnd get() = spikeJunction + 8.0
 
     /** Plan-view spike line from the switch back to the spike tower (real layouts only). */
-    val planSpike: List<Pair<Double, Double>> get() = RealLayouts.byId[spec.id]?.spike.orEmpty()
+    val planSpike: List<Pair<Double, Double>> get() = CustomRides.layout(spec.id)?.spike.orEmpty()
 
     /** Plan-view position [d] metres up the rear spike: along [planSpike], scaled so the tower top is [spikeLength]. */
     fun spikePlanPoint(d: Double): Pair<Double, Double> {

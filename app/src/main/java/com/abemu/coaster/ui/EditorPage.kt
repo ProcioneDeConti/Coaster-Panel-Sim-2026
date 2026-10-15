@@ -226,7 +226,7 @@ fun EditorPage(vm: SimViewModel, onClose: () -> Unit) {
 }
 
 @Composable
-private fun EditField(value: String, onChange: (String) -> Unit, modifier: Modifier, numeric: Boolean = false) {
+internal fun EditField(value: String, onChange: (String) -> Unit, modifier: Modifier, numeric: Boolean = false) {
     BasicTextField(
         value, onChange, singleLine = true,
         textStyle = TextStyle(fontSize = 13.sp, color = Hmi.Text),

@@ -427,6 +427,8 @@ object SoundTest {
     /** When the LSM test started; the whine sweeps from standstill to full speed over 4 s, then holds. */
     @Volatile var lsmStartMs = 0L
     @Volatile var audio: RideAudio? = null
+
+    fun allOff() { trackClear = false; horn = false; lift = false; clack = false; lsm = false }
 }
 
 /** Watches the simulation and drives [RideAudio]. */

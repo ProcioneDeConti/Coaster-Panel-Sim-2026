@@ -74,6 +74,11 @@ class SimViewModel : ViewModel() {
     var hapticsOn by mutableStateOf(true)
     val frame = mutableLongStateOf(0L)
     val trends = com.abemu.coaster.sim.TrendRecorder()
+    /** Park weather (persists across ride changes) and this ride's line. */
+    val weather = com.abemu.coaster.sim.Weather()
+    val queue = com.abemu.coaster.sim.GuestQueue()
+    /** Shows debug-only panels (sound test) on the INSTRUCTOR page. */
+    var debugTools by mutableStateOf(false)
     var access by mutableStateOf(AccessLevel.OPERATOR)
     /** Training drill in progress (or just finished, until dismissed). */
     var drill by mutableStateOf<com.abemu.coaster.sim.Drill?>(null); private set
@@ -93,9 +98,13 @@ class SimViewModel : ViewModel() {
                 acc = (acc + (now - last) / 1e9 * timeScale).coerceAtMost(0.5)
                 last = now
                 while (acc >= scanDt) {
+                    weather.update(scanDt)
+                    plc.weather.windMph = weather.windMph
+                    plc.weather.strikeMi = weather.strikeMi
                     plc.scan(scanDt)
                     plc.plant.step(scanDt)
                     trends.update(plc, scanDt)
+                    queue.update(scanDt, plc)
                     drill?.let { d ->
                         val was = d.finished
                         d.update(scanDt)
@@ -135,6 +144,7 @@ class SimViewModel : ViewModel() {
         coasterId = id
         trainCount = fresh.plant.trains.size
         trends.clear()
+        queue.reset()
         plc = fresh
         drill = com.abemu.coaster.sim.Drill(sc, fresh).also { it.begin() }
     }
@@ -158,6 +168,7 @@ class SimViewModel : ViewModel() {
         fresh.inputs.loadStandEstop = old.loadStandEstop
         fresh.inputs.unloadStandEstop = old.unloadStandEstop
         fresh.dispatchTarget = plc.dispatchTarget
+        if (id != coasterId) queue.reset()
         coasterId = id
         trainCount = fresh.plant.trains.size
         plc = fresh

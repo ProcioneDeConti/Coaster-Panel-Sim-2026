@@ -58,6 +58,8 @@ class RidePlc(val plant: Plant) {
     val alarms = AlarmManager()
     val forces = Forces()
     val safety = SafetyController()
+    /** Weather hold from the anemometer and lightning detector; taller rides have a lower wind limit. */
+    val weather = WeatherInterlock(if (profile.maxHeight >= 60) 35.0 else 40.0)
 
     var state = RideState.POWER_OFF
         private set
@@ -293,6 +295,8 @@ class RidePlc(val plant: Plant) {
         alarms.condition("ESTOP_LOAD", "Load stand E-Stop actuated", Severity.ESTOP, !loadEstopOk)
         alarms.condition("ESTOP_UNLOAD", "Unload stand E-Stop actuated", Severity.ESTOP, !unloadEstopOk)
         alarms.condition("SAFETY", "Safety relay MSR1: remote E-Stop chain open", Severity.ESTOP, !remoteEstopOk)
+        weather.scan(dt)
+        alarms.condition("WX", "Weather hold – ${weather.reason}", Severity.WARNING, weather.hold)
         alarms.condition("AIR", "Main air pressure low (${plant.airPsi.toInt()} psi)", Severity.CSTOP, !airOk)
         if (profile.type == ProfileType.LIFT) {
             alarms.condition("LIFT_VFD", "Lift VFD faulted – F0005 DC bus overvoltage", Severity.CSTOP, !fx("LIFT_VFD_READY", !f.liftVfd))
@@ -445,6 +449,7 @@ class RidePlc(val plant: Plant) {
             Permissive("Unload side operator ready", unloadReady),
             Permissive("${profile.blocks[1].tag} ${profile.blocks[1].name} clear", nextClear(0)),
             Permissive("Air pressure ≥ 75 psi", airOk),
+            Permissive("No weather hold", !weather.hold),
         ) + if (hasSwitch) listOf(Permissive("Switch track aligned to station", switchStationLs && !switchCmd)) else emptyList()
         dispatchReady = permissives.all { it.ok } && !releaseLatch[0]
 

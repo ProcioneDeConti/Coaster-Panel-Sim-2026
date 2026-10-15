@@ -62,8 +62,8 @@ object Hmi {
 enum class HmiPage(val key: String, val title: String, val short: String = title) {
     OVERVIEW("F1", "OVERVIEW", "OVERVW"), STATION("F2", "STATION"), ALARMS("F3", "ALARMS"),
     MAINT("F4", "MAN / MAINT", "MAINT"), IO("F5", "I/O STATUS", "I/O"), SIM("F6", "INSTRUCTOR", "INSTR"),
-    TRENDS("F7", "TRENDS"), LOGIC("F8", "LOGIC"), TRAINING("F9", "TRAINING", "TRAIN"),
-    EDITOR("DEV", "TRACK EDITOR"),
+    TRENDS("F7", "TRENDS"), LOGIC("F8", "LOGIC"), TRAINING("F9", "TRAINING", "TRAIN"), OPS("F10", "PARK OPS", "OPS"),
+    EDITOR("DEV", "TRACK EDITOR"), BUILDER("DEV", "RIDE BUILDER"),
 }
 
 fun stateColor(s: RideState) = when (s) {
@@ -119,13 +119,16 @@ fun HmiTerminal(vm: SimViewModel, modifier: Modifier = Modifier) {
                     HmiPage.ALARMS -> AlarmsPage(vm)
                     HmiPage.MAINT -> MaintPage(vm)
                     HmiPage.IO -> IoPage(vm)
-                    HmiPage.SIM -> if (vm.access >= AccessLevel.INSTRUCTOR) SimPage(vm) { page = HmiPage.EDITOR }
+                    HmiPage.SIM -> if (vm.access >= AccessLevel.INSTRUCTOR) SimPage(vm, { page = HmiPage.BUILDER }) { page = HmiPage.EDITOR }
                         else LockedPage("INSTRUCTOR") { showLogin = true }
                     HmiPage.EDITOR -> if (vm.access >= AccessLevel.INSTRUCTOR) EditorPage(vm) { page = HmiPage.SIM }
+                        else LockedPage("INSTRUCTOR") { showLogin = true }
+                    HmiPage.BUILDER -> if (vm.access >= AccessLevel.INSTRUCTOR) BuilderPage(vm) { page = HmiPage.SIM }
                         else LockedPage("INSTRUCTOR") { showLogin = true }
                     HmiPage.TRENDS -> TrendsPage(vm)
                     HmiPage.LOGIC -> LogicPage(vm)
                     HmiPage.TRAINING -> TrainingPage(vm)
+                    HmiPage.OPS -> OpsPage(vm)
                 }
                 if (showLogin) LoginPad(vm) { showLogin = false }
             }
@@ -133,7 +136,7 @@ fun HmiTerminal(vm: SimViewModel, modifier: Modifier = Modifier) {
         androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxWidth().padding(top = 8.dp)) {
             val narrow = maxWidth < 760.dp
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(if (narrow) 4.dp else 6.dp)) {
-                HmiPage.entries.filter { it != HmiPage.EDITOR }.forEach { p ->
+                HmiPage.entries.filter { it != HmiPage.EDITOR && it != HmiPage.BUILDER }.forEach { p ->
                     FunctionKey(p.key, if (narrow) p.short else p.title, page == p, Modifier.weight(1f)) { Haptics.tick(); page = p }
                 }
             }

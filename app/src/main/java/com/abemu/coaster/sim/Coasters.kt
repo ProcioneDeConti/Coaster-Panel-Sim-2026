@@ -56,7 +56,7 @@ object CoasterLibrary {
     private const val LOSS = 0.04 // conservative energy-head loss per metre (friction + drag)
     private const val LSM_ACCEL = 11.0
 
-    val all: List<CoasterSpec> = listOf(
+    val builtIn: List<CoasterSpec> = listOf(
         // ---------------- Lift hill ----------------
         CoasterSpec("millennium", "Millennium Force", ProfileType.LIFT, 94.5, liftSpeed = 6.0,
             hills1 = listOf(0.62, 0.55, 0.4), mcbrFrac = 0.35, hills2 = listOf(0.6, 0.45, 0.35),
@@ -120,15 +120,18 @@ object CoasterLibrary {
             cars = 8, ridersPerCar = 4, layout = 1, seed = 23),
     )
 
-    fun byId(id: String) = all.first { it.id == id }
-    fun default(type: ProfileType) = if (type == ProfileType.LIFT) byId("cyclone") else byId("stormchaser")
+    /** Built-in coasters followed by rides made with the OSM ride builder. */
+    val all: List<CoasterSpec> get() = builtIn + CustomRides.rides.map { it.spec }
+
+    fun byId(id: String) = all.firstOrNull { it.id == id } ?: default(ProfileType.LIFT)
+    fun default(type: ProfileType) = builtIn.first { it.id == if (type == ProfileType.LIFT) "cyclone" else "stormchaser" }
 
     /**
      * Build a ride. For coasters with a real (OSM) layout, the free-running course is stretched so
      * the simulated circuit matches the real track length.
      */
     fun build(spec: CoasterSpec): RideProfile {
-        val real = RealLayouts.byId[spec.id] ?: return build(spec, 1.0)
+        val real = CustomRides.layout(spec.id) ?: return build(spec, 1.0)
         val l1 = build(spec, 1.0).length
         val l2 = build(spec, 2.0).length
         val perK = (l2 - l1).coerceAtLeast(1.0)
@@ -283,7 +286,7 @@ object CoasterLibrary {
             length = length,
             elevation = e,
             blocks = listOf(b1) + blocks,
-            plan = RealLayouts.byId[spec.id]?.let {
+            plan = CustomRides.layout(spec.id)?.let {
                 // Switch rides: unload and load share the station building; the junction matches RideProfile.spikeJunction.
                 val unloadStart = blocks.firstOrNull { b -> b.kind == BlockKind.UNLOAD }?.start ?: finalEnd
                 realPlan(it, topS, if (it.switchAt >= 0) unloadStart else finalEnd, b1.stopPos!!, 70.0 - (spec.cars * 2.0 + 2.0) - 11.0, length)

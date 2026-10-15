@@ -434,7 +434,7 @@ fun MaintPage(vm: SimViewModel) {
 // ================================================================ INSTRUCTOR / SIM
 
 @Composable
-fun SimPage(vm: SimViewModel, onOpenEditor: () -> Unit) {
+fun SimPage(vm: SimViewModel, onOpenBuilder: () -> Unit, onOpenEditor: () -> Unit) {
     vm.frame.longValue
     val plc = vm.plc
     val f = plc.plant.faults
@@ -443,7 +443,10 @@ fun SimPage(vm: SimViewModel, onOpenEditor: () -> Unit) {
         Column(Modifier.weight(1f).fillMaxHeight().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             HmiFrame("RIDE CONFIGURATION  (ride power must be OFF)") {
                 CoasterPicker(vm, off)
-                HmiButton("OPEN TRACK EDITOR (DEV)", Modifier.fillMaxWidth(), activeColor = Hmi.Info) { onOpenEditor() }
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    HmiButton("BUILD RIDE FROM OSM", Modifier.weight(1f), activeColor = Hmi.Info) { onOpenBuilder() }
+                    HmiButton("OPEN TRACK EDITOR (DEV)", Modifier.weight(1f), activeColor = Hmi.Info) { onOpenEditor() }
+                }
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                     HmiLabel("Trains", 11.sp, modifier = Modifier.width(90.dp))
                     (1..vm.plc.profile.initialStops.size.coerceAtMost(3)).forEach { n ->
@@ -468,6 +471,14 @@ fun SimPage(vm: SimViewModel, onOpenEditor: () -> Unit) {
                 }
                 WebMapControls(vm)
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    HmiLabel("Debug tools", 11.sp, modifier = Modifier.width(90.dp))
+                    HmiButton(if (vm.debugTools) "ON" else "OFF", active = vm.debugTools, activeColor = Hmi.Warn) {
+                        vm.debugTools = !vm.debugTools
+                        if (!vm.debugTools) SoundTest.allOff()
+                    }
+                    HmiLabel("sound test panel", 10.sp, color = Hmi.Dim)
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                     HmiLabel("Haptics", 11.sp, modifier = Modifier.width(90.dp))
                     HmiButton(if (vm.hapticsOn) "ON" else "OFF", active = vm.hapticsOn, activeColor = Hmi.Info) { vm.hapticsOn = !vm.hapticsOn }
                 }
@@ -488,7 +499,7 @@ fun SimPage(vm: SimViewModel, onOpenEditor: () -> Unit) {
                     }
                 }
             }
-            SoundTestFrame()
+            if (vm.debugTools) SoundTestFrame()
             HmiFrame("OPERATOR AIDS") {
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                     HmiLabel("Dispatch", 11.sp, modifier = Modifier.width(90.dp))
@@ -608,7 +619,7 @@ private fun DispatchTimer(vm: SimViewModel, modifier: Modifier) {
     }
 }
 
-/** TEMPORARY debug panel: play each ride sound on demand. Held sounds toggle; one-shots play once. */
+/** Debug panel (shown with Debug tools ON): play each ride sound on demand. Held sounds toggle; one-shots play once. */
 @Composable
 private fun SoundTestFrame() {
     var tick by remember { mutableStateOf(0) } // recompose after a toggle (SoundTest isn't Compose state)
@@ -636,7 +647,7 @@ private fun SoundTestFrame() {
             HmiButton("RESTRAINT LOCK", Modifier.weight(1f), fontSize = 10.sp, maxLines = 2, hPad = 4.dp) { SoundTest.audio?.thump(locking = true) }
             HmiButton("RESTRAINT UNLOCK", Modifier.weight(1f), fontSize = 10.sp, maxLines = 2, hPad = 4.dp) { SoundTest.audio?.thump(locking = false) }
             HmiButton("ALL OFF", Modifier.weight(1f), fontSize = 10.sp, maxLines = 2, hPad = 4.dp) {
-                SoundTest.trackClear = false; SoundTest.horn = false; SoundTest.lift = false; SoundTest.clack = false; SoundTest.lsm = false
+                SoundTest.allOff()
                 tick++
             }
         }
@@ -667,10 +678,12 @@ private fun StandStatus(name: String, estop: Boolean, ready: Boolean?) {
 
 @Composable
 private fun CoasterPicker(vm: SimViewModel, enabled: Boolean) {
-    val lib = com.abemu.coaster.sim.CoasterLibrary.all
-    ProfileType.entries.forEach { type ->
-        HmiLabel(type.label.uppercase(), 10.sp, bold = true, color = Hmi.Dim)
-        lib.filter { it.type == type }.chunked(3).forEach { row ->
+    val custom = com.abemu.coaster.sim.CustomRides.rides.map { it.spec }
+    val groups = ProfileType.entries.map { t -> t.label.uppercase() to com.abemu.coaster.sim.CoasterLibrary.builtIn.filter { it.type == t } } +
+        if (custom.isNotEmpty()) listOf("CUSTOM (OSM RIDE BUILDER)" to custom) else emptyList()
+    groups.forEach { (title, specs) ->
+        HmiLabel(title, 10.sp, bold = true, color = Hmi.Dim)
+        specs.chunked(3).forEach { row ->
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 row.forEach { c ->
                     HmiButton(c.name + if (c.park != null) " ★" else "", Modifier.weight(1f), enabled = enabled,
