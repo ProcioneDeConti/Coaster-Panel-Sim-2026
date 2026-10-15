@@ -236,6 +236,8 @@ private fun WeatherFrame(vm: SimViewModel, instructor: Boolean) {
                     fontSize = 10.sp, maxLines = 2) { w.preset = p }
             }
         }
+        HmiButton("RESET WEATHER + CLEAR HOLDS", Modifier.fillMaxWidth(), enabled = instructor, activeColor = Hmi.Info,
+            fontSize = 10.sp) { w.reset(); wx.reset() }
         HmiLabel("STORM CELL brings a cell in from 25 mi at ~25 mph. Lightning within ${wx.lightningMi.toInt()} mi holds dispatch; " +
             "the hold clears ${(wx.lightningClearSec / 60).toInt()} min after the last close strike. Wind at or above the ride's limit " +
             "holds dispatch until it stays ${(wx.windClearSec / 60).toInt()} min below (limit − 5). Trains already on the course " +

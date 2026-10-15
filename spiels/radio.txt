@@ -120,92 +120,264 @@ Supervisor to ride ops. I'm showing a rollback. Hold everything, maintenance is 
 
 # ---- General park chatter: plays now and then while the ride is up ----
 
-== chatter_1 | SUP | AREA LEAD ==
+== chatter_1 | AREA_LEAD | AREA LEAD ==
 Radio check, radio check on channel three.
 
 == chatter_2 | MAINT | MAINT BASE ==
 Loud and clear.
 
-== chatter_3 | SUP | GUEST SERVICES ==
+== chatter_3 | GUEST_SERVICES | GUEST SERVICES ==
 Guest services to all area leads. We have a lost child, a seven year old boy, red shirt, blue cap, answering to Tyler. Last seen near the front gate.
 
-== chatter_4 | SUP | GUEST SERVICES ==
+== chatter_4 | GUEST_SERVICES | GUEST SERVICES ==
 Guest services, all units. The lost child has been found and reunited with family. Thank you all.
 
-== chatter_5 | MAINT | GAMES ==
+== chatter_5 | GAMES | GAMES ==
 Games lead to supervisor, can I get a cash pickup at the midway booths when someone's free?
 
-== chatter_6 | SUP | AREA LEAD ==
+== chatter_6 | AREA_LEAD | AREA LEAD ==
 Area lead to the coaster crew, breaker is heading your way. First break goes to the unload position.
 
 == chatter_7 | MAINT | MAINT BASE ==
 Maintenance base to unit four, when you're done there, swing by the carousel. They're reporting a squeak in the drive.
 
-== chatter_8 | SUP | FOOD SERVICE ==
+== chatter_8 | FOOD_SERVICE | FOOD SERVICE ==
 Food service to warehouse, we're running low on ice at the pizza stand. Can we get a delivery?
 
-== chatter_9 | MAINT | SECURITY ==
+== chatter_9 | SECURITY | SECURITY ==
 Security to supervisor, I've got a guest at the exit of the log flume who says they lost their phone on the ride.
 
-== chatter_10 | SUP | AREA LEAD ==
+== chatter_10 | AREA_LEAD | AREA LEAD ==
 Area lead, copy. Tell them to check with lost and found at guest services at the end of the day.
 
-== chatter_11 | SUP | FIRST AID ==
+== chatter_11 | FIRST_AID | FIRST AID ==
 First aid to area leads, we're responding to a guest who feels faint near the Ferris wheel. Just a heat thing, no emergency.
 
 == chatter_12 | MAINT | MAINT BASE ==
 Maintenance base, all units. Reminder, daily inspection sheets are due back by close.
 
-== chatter_13 | SUP | AREA LEAD ==
+== chatter_13 | AREA_LEAD | AREA LEAD ==
 Area lead to all ride ops in the north area. Hydrate. It's ninety-two out there, take your water breaks.
 
-== chatter_14 | MAINT | CUSTODIAL ==
+== chatter_14 | CUSTODIAL | CUSTODIAL ==
 Custodial to area lead, I'm on my way to clean up a spill at the exit of the swing ride.
 
-== chatter_15 | SUP | GUEST SERVICES ==
+== chatter_15 | GUEST_SERVICES | GUEST SERVICES ==
 Guest services, the fast lane system is back online. Please go ahead and accept passes again.
 
-== chatter_16 | MAINT | RIDE OPS ==
+== chatter_16 | RIDE_OPS | RIDE OPS ==
 Bumper cars to area lead, we're going down for a couple minutes to reset a car that's stuck in the corner.
 
-== chatter_17 | SUP | AREA LEAD ==
+== chatter_17 | AREA_LEAD | AREA LEAD ==
 Area lead copies. Let me know when you're back up.
 
 == chatter_18 | MAINT | MAINT BASE ==
 Maintenance base to unit two, the parts you ordered for the drop tower came in. They're on the bench.
 
-== chatter_19 | SUP | ENTERTAINMENT ==
+== chatter_19 | ENTERTAINMENT | ENTERTAINMENT ==
 Entertainment to all units, the parade steps off from the main gate in fifteen minutes. Please keep the parade route clear.
 
-== chatter_20 | MAINT | SECURITY ==
+== chatter_20 | SECURITY | SECURITY ==
 Security to supervisor, can you send someone to the front of the coaster queue? A guest is trying to cut the line.
 
-== chatter_21 | SUP | AREA LEAD ==
+== chatter_21 | AREA_LEAD | AREA LEAD ==
 Area lead, I'm on my way. Two minutes.
 
-== chatter_22 | SUP | FOOD SERVICE ==
+== chatter_22 | FOOD_SERVICE | FOOD SERVICE ==
 Food service, all stands. The fry machine at the burger stand is down, please direct guests to the grill by the lake.
 
 == chatter_23 | MAINT | MAINT BASE ==
 Maintenance base, unit three, what's your twenty?
 
-== chatter_24 | MAINT | MAINT UNIT ==
+== chatter_24 | MAINT_UNIT | MAINT UNIT ==
 Unit three is at the water park pump house. I'll be clear in about ten.
 
-== chatter_25 | SUP | AREA LEAD ==
+== chatter_25 | AREA_LEAD | AREA LEAD ==
 Area lead to the coaster, we're at sixty minutes posted. Great job everyone, keep it moving.
 
-== chatter_26 | SUP | GUEST SERVICES ==
+== chatter_26 | GUEST_SERVICES | GUEST SERVICES ==
 Guest services to all units. The fireworks show is on for tonight at ten. Please share with your guests.
 
-== chatter_27 | MAINT | SECURITY ==
+== chatter_27 | SECURITY | SECURITY ==
 Security, all units. We have a drone flying over the south end of the park. If you see the operator, please call it in.
 
-== chatter_28 | SUP | AREA LEAD ==
+== chatter_28 | AREA_LEAD | AREA LEAD ==
 Area lead to the carousel, can you send me your rider count for the last hour?
 
-== chatter_29 | MAINT | RIDE OPS ==
+== chatter_29 | RIDE_OPS | RIDE OPS ==
 Log flume to area lead, we're adding a boat. Expect a short delay while we bring it out of storage.
 
 == chatter_30 | SUP | SUPERVISOR ==
 All units, supervisor. Fifteen minutes to park close. Begin closing your queue lines at the posted time.
+
+# ---- More variants of the maintenance calls (a field tech answers some of them) ----
+== maint_lift_2 | MAINT_UNIT ==
+Unit three copies the lift fault. I'm right by the lift motor room, be there in one minute.
+== maint_launch_2 | MAINT_UNIT ==
+Unit three copies the launch fault. Heading to the drive room, don't reset anything until I'm there.
+== maint_air_2 | MAINT_UNIT ==
+Unit three copies low air. I'll check the dryer and the compressor, keep everything stopped.
+== maint_switch_2 | MAINT_UNIT ==
+Unit three copies the switch track. On my way, leave the transfer where it is.
+== maint_safety_2 | MAINT_UNIT ==
+Unit three copies the safety fault. Grabbing the prints and heading to the control room.
+== maint_restraint_2 | MAINT_UNIT ==
+Unit three copies a restraint fault. Coming up the exit ramp, have that row unloaded for me.
+== maint_clear_4 | MAINT_UNIT ==
+Unit three is clear of the coaster. Work's done, you're good to cycle.
+== rollback_maint_2 | MAINT_UNIT ==
+Unit three copies the rollback. Walking the launch track now, nobody moves a train.
+== rollback_clear_2 | MAINT_UNIT ==
+Unit three, launch inspection's done. Fins and brakes look good, you're clear to relaunch.
+== belt_3 | SUP ==
+Ride ops, supervisor. Unload is reporting an open seatbelt on that last train. Slow down on your checks.
+== resume_3 | SUP ==
+Ride ops, supervisor. I see you're back up. Thanks for the quick turnaround.
+
+# ---- New supervisor calls ----
+== wind_warn | SUP ==
+Ride ops, supervisor. Be advised, gusts are getting close to your limit. Keep an eye on your anemometer.
+== wind_warn_2 | SUP ==
+All high rides, supervisor. Wind is picking up. Be ready to hold if you hit your limit.
+== wind_warn_3 | SUP ==
+Ride ops, heads up, I'm seeing gusts a few miles an hour under your limit. Watch it closely.
+== storm_advise | SUP ==
+All rides, supervisor. Lightning detected about fifteen miles out. No hold yet, but be advised.
+== storm_advise_2 | SUP ==
+All rides, supervisor. There's a storm cell to the west with strikes inside twenty miles. Be ready for a hold.
+== down_query | SUP ==
+Ride ops, supervisor. I'm showing you down with no maintenance call. What's going on over there?
+== down_query_2 | SUP ==
+Ride ops, supervisor. You've been down a few minutes. Do you need anything?
+== estop_noreply | SUP ==
+Ride ops, supervisor. Do you copy? I need a status on that E-stop.
+== down_noreply | SUP ==
+Ride ops, supervisor, I'm not hearing you. Somebody give me a status on the coaster.
+== maint_request | MAINT ==
+Maintenance copies. Sending a tech to the coaster station now.
+== maint_request_2 | MAINT_UNIT ==
+Unit three copies, on my way to the coaster. Be there in about three minutes.
+== break_reply | AREA_LEAD ==
+Area lead copies. I'll have a breaker over to you in about ten.
+== break_reply_2 | AREA_LEAD ==
+Copy, coaster. You're next on the break list, hang tight.
+== radio_check_reply | AREA_LEAD ==
+Coaster, area lead. Loud and clear.
+== radio_check_reply_2 | MAINT ==
+Maintenance base has you loud and clear, coaster.
+
+# ---- You, the coaster operator ----
+== op_copy | OP ==
+Coaster copies.
+== op_copy_2 | OP ==
+Copy that, coaster.
+== op_open | OP ==
+Coaster copies, opening now.
+== op_open_2 | OP ==
+Coaster copies. Checks are good, we're open.
+== op_estop_ok | OP ==
+Coaster to supervisor. Everyone's okay, it was a precautionary stop. Resetting now.
+== op_estop_ok_2 | OP ==
+Coaster copies. No injuries, guests are fine. We'll be back up shortly.
+== op_need_maint | OP ==
+Coaster to supervisor. Everyone's okay, but I'm going to need maintenance at the station.
+== op_down_fault | OP ==
+Coaster to supervisor. We're working through a fault, should be back up in a few minutes.
+== op_down_fault_2 | OP ==
+Coaster copies. We had a stop, resetting now, nothing needed yet.
+== op_stacking | OP ==
+Coaster copies, picking up the pace.
+== op_stacking_2 | OP ==
+Coaster copies. Tightening up our dispatches now.
+== op_slow_load | OP ==
+Coaster copies. We had a slow load with a guest who needed a different seat. Catching up now.
+== op_belt | OP ==
+Coaster copies. I'll recheck every seat before dispatch.
+== op_hold | OP ==
+Coaster copies, holding all dispatches.
+== op_hold_2 | OP ==
+Coaster copies the wind hold. Trains are home, holding.
+== op_lightning | OP ==
+Coaster copies. Holding dispatches and closing the queue.
+== op_resume | OP ==
+Coaster copies. Reopening the queue and resuming operations.
+== op_rollback | OP ==
+Coaster copies. Gates are closed, holding all trains.
+== op_line | OP ==
+Coaster to guest services. Posted wait is accurate, we're running full trains.
+== op_radio_check | OP ==
+Coaster, radio check.
+== op_request_maint | OP ==
+Coaster to maintenance. Can we get a tech to the station when you have a moment?
+== op_request_break | OP ==
+Coaster to area lead. Requesting a breaker when one's available.
+
+# ---- More park chatter ----
+== chatter_31 | FIRST_AID | FIRST AID ==
+First aid to all units. Sunscreen is available at both first aid stations, send guests our way if they need it.
+== chatter_32 | GAMES | GAMES ==
+Games to area lead. Somebody just won the giant panda at the ring toss. Can we get a restock?
+== chatter_33 | CUSTODIAL | CUSTODIAL ==
+Custodial to all units. Restrooms by the carousel are closed for cleaning for about ten minutes.
+== chatter_34 | SECURITY | SECURITY ==
+Security, all units. Update on that drone, we found the operator in the parking lot. It's grounded.
+== chatter_36 | ENTERTAINMENT | ENTERTAINMENT ==
+Entertainment to all units. Character meet and greet is moving to the bandstand because of the heat.
+== chatter_37 | SECURITY | SECURITY ==
+Security to guest services. That phone from the log flume turned up in the splash pool. Bringing it to lost and found.
+== chatter_38 | MAINT_UNIT | MAINT UNIT ==
+Unit four to base. Carousel drive bearing is greased, the squeak is gone.
+== chatter_39 | RIDE_OPS | RIDE OPS ==
+Log flume to area lead. Extra boat is out, we're running full capacity.
+== chatter_40 | AREA_LEAD | AREA LEAD ==
+Area lead to maintenance. The drinking fountain at the coaster exit isn't working.
+== chatter_41 | MAINT | MAINT BASE ==
+Maintenance copies. We'll add it to the list.
+== chatter_42 | FIRST_AID | FIRST AID ==
+First aid to security. Can you help clear a path by the train station? We're bringing a wheelchair through.
+== chatter_43 | SECURITY | SECURITY ==
+Security copies, on my way.
+== chatter_44 | GUEST_SERVICES | GUEST SERVICES ==
+Guest services to the coaster. Sending a party of four with a ride access pass to your exit. Return time is two fifteen.
+== chatter_45 | RIDE_OPS | RIDE OPS ==
+Bumper cars to area lead. That car is reset, we're back up.
+
+# ---- Night ----
+== chatter_n1 | AREA_LEAD | AREA LEAD ==
+Area lead to all ride ops. Thirty minutes to fireworks. Expect a rush on your lines right after the show.
+== chatter_n2 | SECURITY | SECURITY ==
+Security, all units. Night patrols are out. Keep your exit gates latched after close.
+== chatter_n3 | MAINT | MAINT BASE ==
+Maintenance base to all units. Night crew is checking in, leave your write-ups on the board.
+== chatter_n4 | ENTERTAINMENT | ENTERTAINMENT ==
+Entertainment to all units. The light show on the lake starts in five. Expect crowds along the boardwalk.
+== chatter_n5 | MAINT_UNIT | MAINT UNIT ==
+Unit three to base. Two of the entrance sign lamps are out at the coaster. Adding it to the night work list.
+== chatter_n6 | RIDE_OPS | RIDE OPS ==
+Swings to area lead. One of our flood lights just tripped, the load platform's getting dark.
+== chatter_n7 | AREA_LEAD | AREA LEAD ==
+Area lead copies. I'll get maintenance on it.
+
+# ---- Long line ----
+== chatter_b1 | GUEST_SERVICES | GUEST SERVICES ==
+Guest services to the coaster. We're getting questions about your wait time. Can you confirm what's posted?
+== chatter_b2 | AREA_LEAD | AREA LEAD ==
+Area lead to the coaster. Your line is out past the switchbacks. I'm sending a grouper to help at load.
+== chatter_b3 | SECURITY | SECURITY ==
+Security to area lead. The coaster queue is backing up into the midway. Can we get a line cap?
+== chatter_b4 | AREA_LEAD | AREA LEAD ==
+Area lead copies. I'll cap it at the entrance.
+== chatter_b5 | FOOD_SERVICE | FOOD SERVICE ==
+Food service to warehouse. The churro cart by the coaster is slammed. Can someone run over more mix?
+
+# ---- Windy ----
+== chatter_w1 | CUSTODIAL | CUSTODIAL ==
+Custodial to area lead. The wind's knocking trash cans over down by the lake. We're on it.
+== chatter_w2 | GUEST_SERVICES | GUEST SERVICES ==
+Guest services, all units. Front gate is out of ponchos. Send guests to the gift shop.
+== chatter_w3 | RIDE_OPS | RIDE OPS ==
+Drop tower to area lead. We're watching our anemometer, sitting about five under our limit.
+== chatter_w4 | AREA_LEAD | AREA LEAD ==
+Area lead copies. Keep me posted.
+== chatter_w5 | ENTERTAINMENT | ENTERTAINMENT ==
+Entertainment to all units. We're pulling the parade balloons because of the wind.

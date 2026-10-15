@@ -27,7 +27,22 @@ SCRIPT = os.path.join(ROOT, "spiels", "radio.txt")
 OUT = os.path.join(ROOT, "app", "src", "main", "assets", "radio")
 # Raw (dry) speech is cached outside the APK so the effect can be re-tuned without spending credits.
 RAW = os.path.join(ROOT, "tools", "spiels", "radio_raw")
-VOICES = {"SUP": "g6xIsTj2HwM6VR4iXFCw", "MAINT": "uFIXVu9mmnDZ7dTKCBTX"}
+# One voice per role on the channel; the speaker field of each script header picks it.
+VOICES = {
+    "SUP": "g6xIsTj2HwM6VR4iXFCw",             # Jessica Anne Bogart: ride ops supervisor
+    "MAINT": "uFIXVu9mmnDZ7dTKCBTX",           # Justin Time: maintenance base
+    "MAINT_UNIT": "T5cu6IU92Krx4mh43osx",      # Bill Oxley: maintenance tech in the field
+    "AREA_LEAD": "cjVigY5qzO86Huf0OWal",       # Eric
+    "SECURITY": "pNInz6obpgDQGcFmaJgB",        # Adam
+    "GUEST_SERVICES": "XrExE9yKIg1WjnnlVkGX",  # Matilda
+    "FIRST_AID": "EXAVITQu4vr4xnSDxMaL",       # Sarah
+    "FOOD_SERVICE": "iP95p4xoKVk53GoZ742B",    # Chris
+    "ENTERTAINMENT": "cgSgspJ2msm6clMCkdW9",   # Jessica
+    "RIDE_OPS": "bIHbv24MWmeRgasZH58o",        # Will: operators on other rides
+    "GAMES": "TX3LPaxmHKxFdv7VOQHJ",           # Liam
+    "CUSTODIAL": "CwhRBWXzGAHq8TQ4Fs17",       # Roger
+    "OP": "SAz9YHcvj6GT2YYXdXww",              # River: you, the coaster operator
+}
 MODEL = "eleven_multilingual_v2"
 RATE = 16000
 
@@ -100,11 +115,11 @@ def radio_fx(pcm, seed):
     x = [s / 32768 for s in struct.unpack(f"<{len(pcm) // 2}h", pcm)]
     peak = max(1e-6, max(abs(s) for s in x))
     x = [s / peak * 0.8 for s in x]
-    # Narrow two-way radio band, two passes each side for a steeper skirt.
-    for kind, f in (("hp", 380), ("hp", 380), ("lp", 2900), ("lp", 2900)):
+    # Two-way radio band, kept fairly wide so it only hints at the radio.
+    for kind, f in (("hp", 280), ("hp", 280), ("lp", 3600), ("lp", 3600)):
         x = biquad(x, kind, f)
-    # Drive into soft clipping (overdriven mic), then a little hiss while the carrier is up.
-    x = [math.tanh(s * 3.2) * 0.62 + rnd.gauss(0, 0.012) for s in x]
+    # Gentle saturation and a faint hiss while the carrier is up.
+    x = [math.tanh(s * 1.6) * 0.82 + rnd.gauss(0, 0.004) for s in x]
 
     def noise(ms, level, fade):
         n = int(RATE * ms / 1000)
@@ -114,8 +129,8 @@ def radio_fx(pcm, seed):
             out.append(rnd.gauss(0, level) * env)
         return biquad(biquad(out, "hp", 600), "lp", 5000)
 
-    key_up = [0.0] * int(RATE * 0.03) + noise(45, 0.18, False)
-    tail = [0.0] * int(RATE * 0.12) + noise(170, 0.32, True)  # squelch tail when the talker un-keys
+    key_up = [0.0] * int(RATE * 0.03) + noise(35, 0.07, False)
+    tail = [0.0] * int(RATE * 0.12) + noise(140, 0.12, True)  # squelch tail when the talker un-keys
     y = key_up + x + tail
     return b"".join(struct.pack("<h", max(-32767, min(32767, int(s * 32767)))) for s in y)
 

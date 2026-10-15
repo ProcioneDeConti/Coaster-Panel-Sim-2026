@@ -122,10 +122,6 @@ fun OperatorConsole(vm: SimViewModel, modifier: Modifier = Modifier) {
                 PushButton("GATES\nCLOSE", Lens.Green, (powered && plant.gateClosedSensor && !plant.gatesOpenCmd) ||
                     (gatesClosing && blink), { inp.gatesClose = it })
             }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                OperatorStand("LOAD STAND", inp.loadStandEstop, { inp.loadStandEstop = it }, plc.loadReady) { inp.loadReady = it }
-                OperatorStand("UNLOAD STAND", inp.unloadStandEstop, { inp.unloadStandEstop = it }, plc.unloadReady) { inp.unloadReady = it }
-            }
         }
 
         // --- Dispatch (two-hand) ---
@@ -134,10 +130,15 @@ fun OperatorConsole(vm: SimViewModel, modifier: Modifier = Modifier) {
             val ready = plc.dispatchReady
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 PushButton("DISPATCH", Lens.Green, ready && blink || plc.releaseLatch[0], { inp.dispatchL = it }, size = 56.dp)
-                Column(Modifier.weight(1f).padding(horizontal = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    LegendPlate("TWO-HAND DISPATCH\nPRESS BOTH TOGETHER", 150.dp)
+                // The remote stands sit between the dispatch buttons to keep the console short.
+                Row(Modifier.weight(1f).padding(horizontal = 6.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
+                    OperatorStand("LOAD STAND", inp.loadStandEstop, { inp.loadStandEstop = it }, plc.loadReady) { inp.loadReady = it }
+                    OperatorStand("UNLOAD STAND", inp.unloadStandEstop, { inp.unloadStandEstop = it }, plc.unloadReady) { inp.unloadReady = it }
                 }
                 PushButton("DISPATCH", Lens.Green, ready && blink || plc.releaseLatch[0], { inp.dispatchR = it }, size = 56.dp)
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+                LegendPlate("TWO-HAND DISPATCH – PRESS BOTH TOGETHER", 260.dp)
             }
         }
         ConsoleRadio(vm)

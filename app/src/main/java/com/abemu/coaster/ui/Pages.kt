@@ -20,6 +20,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -64,7 +65,7 @@ fun StationPage(vm: SimViewModel) {
     val plant = plc.plant
     val inp = plc.inputs
     val st = plant.stationTrain()
-    val tm = rememberTextMeasurer()
+    val tm = rememberTextMeasurer(cacheSize = 64)
     Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         Column(Modifier.weight(1.25f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             HmiFrame("STATION – ${if (st != null) "TRAIN ${st.id} IN STATION" else "NO TRAIN"}") {
@@ -738,6 +739,40 @@ private fun SoundTestFrame() {
                 SoundTest.allOff()
                 tick++
             }
+        }
+        RadioClipPicker()
+    }
+}
+
+/** Debug: pick any recorded radio line and put it on the air through the console radio. */
+@Composable
+private fun RadioClipPicker() {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val script = remember { loadRadio(context).values.toList() }
+    var open by remember { mutableStateOf(false) }
+    var sel by remember { mutableStateOf(script.firstOrNull()) }
+    HmiLabel("Radio lines (${script.size}) — plays on the console radio (sound must be on)", 10.sp, color = Hmi.Dim)
+    Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.weight(1f)) {
+            HmiButton(sel?.let { "${it.clip}  ·  ${it.label}  ▾" } ?: "–", Modifier.fillMaxWidth(), fontSize = 10.sp) { open = true }
+            androidx.compose.material3.DropdownMenu(open, { open = false }, Modifier.heightIn(max = 420.dp)) {
+                script.forEach { l ->
+                    androidx.compose.material3.DropdownMenuItem(
+                        text = {
+                            Column {
+                                Text("${l.clip}  ·  ${l.label}", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                Text(l.text, fontSize = 10.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                            }
+                        },
+                        onClick = { sel = l; open = false; RadioState.preview.addLast(l.clip) },
+                    )
+                }
+            }
+        }
+        HmiButton("PLAY", fontSize = 10.sp) { sel?.let { RadioState.preview.addLast(it.clip) } }
+        HmiButton("NEXT ▸", fontSize = 10.sp) {
+            val i = script.indexOf(sel) + 1
+            sel = script.getOrNull(i % script.size)?.also { RadioState.preview.addLast(it.clip) }
         }
     }
 }

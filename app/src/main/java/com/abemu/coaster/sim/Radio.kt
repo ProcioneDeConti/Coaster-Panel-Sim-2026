@@ -1,11 +1,18 @@
 package com.abemu.coaster.sim
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+
 /**
  * Ride operations radio channel: the supervisor and maintenance call the operator when things happen on the ride.
  * Watches the PLC each scan and queues pre-recorded clips (ids from spiels/radio.txt); the UI plays them in order.
  */
 class RadioDesk {
     private class Pending(val due: Double, val clip: String)
+
+    /** Something the operator can key up and say: their clip, then what the other end does about it. */
+    class Reply(val label: String, val clip: String, val after: List<Pair<String, Double>> = emptyList(), val callsMaint: Boolean = false)
 
     private val pending = mutableListOf<Pending>()
     private val lastSaid = HashMap<String, Double>()
@@ -26,12 +33,30 @@ class RadioDesk {
     private var lastHistory = 0L
     private var chatterT = 120.0
     private val chatterBag = mutableListOf<List<Pair<String, Double>>>()
+    private val contextBags = HashMap<String, MutableList<List<Pair<String, Double>>>>()
+
+    /** The call the operator is expected to answer (base clip id), and when it went out. Observable for the PTT lamp. */
+    var prompt by mutableStateOf<String?>(null); private set
+    private var promptT = 0.0
+
+    /** Replies on offer right now: answers to [prompt] first, then the calls the operator can always make. */
+    val replies: List<Reply> get() = (prompt?.let { REPLIES[it] } ?: emptyList()) + GENERAL
+
+    fun reply(r: Reply) {
+        pending.removeAll { it.clip.endsWith("_noreply") }
+        prompt = null
+        say(r.clip, 0.3, 0.0)
+        var d = 0.3
+        r.after.forEach { (clip, gap) -> d += gap; say(clip, d, 20.0) }
+        if (r.callsMaint) maintCalled = true
+    }
 
     /** Next clip due for playback, removed from the queue; null when nothing is due. */
     fun next(): String? {
         val p = pending.filter { it.due <= t }.minByOrNull { it.due } ?: return null
         pending.remove(p)
         log.addFirst(t to p.clip)
+        if (p.clip in REPLIES) { prompt = p.clip; promptT = t }
         while (log.size > 30) log.removeLast()
         return p.clip
     }
@@ -45,7 +70,8 @@ class RadioDesk {
         pending += Pending(t + delay, clip)
     }
 
-    fun update(dt: Double, plc: RidePlc, on: Boolean) {
+    /** [night], [postedWaitMin] and [windMph] steer which park chatter fits the moment. */
+    fun update(dt: Double, plc: RidePlc, on: Boolean, night: Boolean = false, postedWaitMin: Int = 0, windMph: Double = 0.0) {
         t += dt
         if (plc !== plcRef) {
             plcRef = plc
@@ -55,7 +81,14 @@ class RadioDesk {
             prevArmed = plc.relaunchArmed; stackCalled = false; lastHistory = plc.alarms.historyVersion
             return
         }
-        if (!on) { pending.clear(); return }
+        if (!on) { pending.clear(); prompt = null; return }
+        // Unanswered calls: the supervisor chases the ones that need a status; anything else just lapses.
+        prompt?.let { p ->
+            if (t - promptT > 25) {
+                prompt = null
+                NOREPLY[p]?.let { say(it, 0.0, 120.0) }
+            }
+        }
         val st = plc.state
         val running = st == RideState.RUNNING
 
@@ -99,7 +132,12 @@ class RadioDesk {
         if (wx.windHold && !prevWind) say("wind_hold", 2.0, 300.0)
         if (wx.lightningHold && !prevLightning) say("lightning_hold", 2.0, 300.0)
         if ((prevWind || prevLightning) && !wx.hold) say("weather_clear", 3.0, 300.0)
+        if (!wx.windHold && wx.windMph >= wx.windLimitMph - 4) say("wind_warn", 1.0, 900.0)
+        wx.strikeMi?.let { if (it > wx.lightningMi && it <= 20 && !wx.lightningHold) say("storm_advise", 2.0, 900.0) }
         prevWind = wx.windHold; prevLightning = wx.lightningHold
+
+        // Down with nothing on the board and nobody called: the supervisor wants to know why.
+        if (opened && st == RideState.STOPPED && !faulted && !maintCalled && !wx.hold && downT > 150) say("down_query", 0.0, 600.0)
 
         // Slow dispatching: trains stacked on the brakes for a while.
         if (running && plc.stackT > 30 && !stackCalled) {
@@ -119,9 +157,13 @@ class RadioDesk {
             chatterT -= dt
             if (chatterT <= 0) {
                 chatterT = 150 + Math.random() * 270
-                if (chatterBag.isEmpty()) chatterBag += CHATTER.shuffled()
+                // Half the time, pick something that fits the moment (night, a long line, a windy day).
+                val moods = listOfNotNull("night".takeIf { night }, "busy".takeIf { postedWaitMin >= 45 }, "windy".takeIf { windMph >= 18 })
+                val mood = moods.randomOrNull()?.takeIf { Math.random() < 0.5 }
+                val bag = if (mood != null) contextBags.getOrPut(mood) { mutableListOf() } else chatterBag
+                if (bag.isEmpty()) bag += (if (mood != null) CONTEXT_CHATTER.getValue(mood) else CHATTER).shuffled()
                 var delay = 0.0
-                chatterBag.removeAt(0).forEach { (clip, gap) -> delay += gap; say(clip, delay, 0.0) }
+                bag.removeAt(0).forEach { (clip, gap) -> delay += gap; say(clip, delay, 0.0) }
             }
         }
         prevState = st
@@ -132,11 +174,59 @@ class RadioDesk {
         private val CHATTER: List<List<Pair<String, Double>>> = listOf(
             listOf("chatter_1" to 0.0, "chatter_2" to 1.0),
             listOf("chatter_3" to 0.0, "chatter_4" to 150.0),
-            listOf("chatter_9" to 0.0, "chatter_10" to 1.5),
-            listOf("chatter_16" to 0.0, "chatter_17" to 1.0),
+            listOf("chatter_9" to 0.0, "chatter_10" to 1.5, "chatter_37" to 240.0),
+            listOf("chatter_16" to 0.0, "chatter_17" to 1.0, "chatter_45" to 120.0),
+            listOf("chatter_7" to 0.0, "chatter_38" to 240.0),
+            listOf("chatter_27" to 0.0, "chatter_34" to 300.0),
+            listOf("chatter_40" to 0.0, "chatter_41" to 1.5),
+            listOf("chatter_42" to 0.0, "chatter_43" to 1.0),
             listOf("chatter_20" to 0.0, "chatter_21" to 1.0),
             listOf("chatter_23" to 0.0, "chatter_24" to 2.0),
-        ) + listOf(5, 6, 7, 8, 11, 12, 13, 14, 15, 18, 19, 22, 25, 26, 27, 28, 29, 30).map { listOf("chatter_$it" to 0.0) }
+        ) + listOf(5, 6, 8, 11, 12, 13, 14, 15, 18, 19, 22, 25, 26, 28, 29, 30, 31, 32, 33, 36, 39, 44)
+            .map { listOf("chatter_$it" to 0.0) }
+
+        private val CONTEXT_CHATTER: Map<String, List<List<Pair<String, Double>>>> = mapOf(
+            "night" to listOf(listOf("chatter_n1" to 0.0), listOf("chatter_n2" to 0.0), listOf("chatter_n3" to 0.0),
+                listOf("chatter_n4" to 0.0), listOf("chatter_n5" to 0.0), listOf("chatter_n6" to 0.0, "chatter_n7" to 1.5)),
+            "busy" to listOf(listOf("chatter_b1" to 0.0), listOf("chatter_b2" to 0.0), listOf("chatter_b3" to 0.0, "chatter_b4" to 1.5),
+                listOf("chatter_b5" to 0.0)),
+            "windy" to listOf(listOf("chatter_w1" to 0.0), listOf("chatter_w2" to 0.0), listOf("chatter_w3" to 0.0, "chatter_w4" to 1.5),
+                listOf("chatter_w5" to 0.0)),
+        )
+
+        private val COPY = Reply("COPY", "op_copy")
+        private val NEED_MAINT = Reply("NEED MAINTENANCE", "op_need_maint", listOf("maint_request" to 4.0), callsMaint = true)
+        private val STACK = listOf(Reply("PICKING IT UP", "op_stacking"), Reply("SLOW LOAD, CATCHING UP", "op_slow_load"))
+
+        /** Calls that expect an answer from the operator, and what they can say back. */
+        val REPLIES: Map<String, List<Reply>> = mapOf(
+            "opening" to listOf(Reply("OPENING NOW", "op_open")),
+            "estop" to listOf(Reply("ALL OK, RESETTING", "op_estop_ok"), NEED_MAINT),
+            "estop_noreply" to listOf(Reply("ALL OK, RESETTING", "op_estop_ok"), NEED_MAINT),
+            "down_query" to listOf(Reply("WORKING A FAULT", "op_down_fault"), NEED_MAINT),
+            "down_noreply" to listOf(Reply("WORKING A FAULT", "op_down_fault"), NEED_MAINT),
+            "stacking" to STACK,
+            "stacking_2" to STACK,
+            "belt" to listOf(Reply("WILL RECHECK SEATS", "op_belt")),
+            "wind_hold" to listOf(Reply("HOLDING DISPATCHES", "op_hold")),
+            "lightning_hold" to listOf(Reply("HOLDING, QUEUE CLOSED", "op_lightning")),
+            "weather_clear" to listOf(Reply("RESUMING", "op_resume")),
+            "rollback" to listOf(Reply("GATES CLOSED, HOLDING", "op_rollback")),
+            "wind_warn" to listOf(COPY),
+            "storm_advise" to listOf(COPY),
+            "chatter_b1" to listOf(Reply("POSTED WAIT IS ACCURATE", "op_line")),
+            "chatter_44" to listOf(COPY),
+        )
+
+        /** Calls the operator can make at any time. */
+        val GENERAL = listOf(
+            Reply("RADIO CHECK", "op_radio_check", listOf("radio_check_reply" to 1.5)),
+            Reply("REQUEST MAINTENANCE", "op_request_maint", listOf("maint_request" to 4.0), callsMaint = true),
+            Reply("REQUEST A BREAKER", "op_request_break", listOf("break_reply" to 2.0)),
+        )
+
+        /** The supervisor's follow-up when a call that needs a status goes unanswered. */
+        private val NOREPLY = mapOf("estop" to "estop_noreply", "down_query" to "down_noreply")
 
         /** Maintenance clip for a newly active alarm code, or null if it is not a maintenance call. */
         fun maintClip(code: String): String? = when {

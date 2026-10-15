@@ -15,7 +15,7 @@ enum class WeatherPreset(val label: String) {
  * ([windMph], instantaneous including gusts) and a lightning detector ([strikeMi], distance of the most
  * recent strike in the last minute, or null). Runs in simulated seconds, so sim speed fast-forwards storms.
  */
-class Weather(seed: Int = 7) {
+class Weather(seed: Int = Random.nextInt()) {
     private val rnd = Random(seed)
     var preset = WeatherPreset.CLEAR
         set(v) { field = v; startSpell(v) }
@@ -50,6 +50,14 @@ class Weather(seed: Int = 7) {
         if (current == WeatherPreset.STORM) cellMi = -25.0
     }
 
+    /** Instructor reset: drop straight to the preset's calm state (no gust history, no recent strike). */
+    fun reset() {
+        startSpell(preset)
+        baseWind = 6.0; gust = 0.0; windMph = 6.0
+        strikeMi = null; strikeAge = 999.0
+        history.clear(); histPeak = 0.0
+    }
+
     fun update(dt: Double) {
         t += dt
         spellT += dt
@@ -79,7 +87,7 @@ class Weather(seed: Int = 7) {
             WeatherPreset.STORM -> 10.0 + 22.0 * stormNear
             WeatherPreset.AUTO -> 6.0
         }
-        baseWind += (target - baseWind) * (dt / 90).coerceAtMost(1.0) + sin(t / 37) * 0.02
+        baseWind += (target - baseWind) * (dt / 90).coerceAtMost(1.0) + sin(t / 37) * 0.02 * dt
         // Gusts: short bursts, stronger in high wind and under a storm.
         gustT -= dt
         if (gustT <= 0) {
@@ -139,6 +147,9 @@ class WeatherInterlock(val windLimitMph: Double) {
     var windClearIn = 0.0; private set
     var lightningClearIn = 0.0; private set
     val hold get() = windHold || lightningHold
+
+    /** Instructor reset: clear both holds immediately. */
+    fun reset() { windHold = false; lightningHold = false; windClearIn = 0.0; lightningClearIn = 0.0 }
 
     fun scan(dt: Double) {
         if (windMph >= windLimitMph) { windHold = true; windClearIn = windClearSec }
