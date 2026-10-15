@@ -339,7 +339,10 @@ object Scenarios {
             fixes = { mapOf("LSM" to { x -> x.plant.faults.launchUnderspeed = false }) },
             steps = listOf(
                 Step("Rollback detected – acknowledge the alarm") { d, _ -> "ROLLBACK" in d.seen && d.acked },
-                repair("Service the LSM drive (work order)"), reset(), restart(),
+                repair("Service the LSM drive (work order)"),
+                Step("Rollback inspection signed off (MAINTENANCE page)") { d, _ -> d.plc.rollbackInspected || d.plc.relaunchHold },
+                reset(), restart(),
+                Step("Relaunch authorized once the train is back at the launch position") { d, _ -> d.plc.relaunchArmed },
                 Step("Successful launch over the top hat", afterPrev = true) { d, _ -> d.launchesOk > 0 && !d.plc.alarms.isActive("ROLLBACK") },
             ),
         ),

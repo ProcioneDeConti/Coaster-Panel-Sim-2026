@@ -268,6 +268,13 @@ object CoasterLibrary {
         }
         blocks += Block(blocks.size + 1, nextTag(), finalName, BlockKind.BRAKE_RUN, blocks.last().end, s, s - 5, finalFlat + 5)
 
+        // ---- Station approach: a second brake block so a train can stack behind the station ----
+        if (spec.hasMcbr && !spec.unloadStation && !spec.movingBlockStation) {
+            val a0 = s
+            to(spec.cars * 2.0 + 2.0 + 14, finalH)
+            blocks += Block(blocks.size + 1, nextTag(), "Station Approach", BlockKind.BRAKE_RUN, a0, s, s - 5, a0, approach = true)
+        }
+
         // ---- Separate unload station ----
         if (spec.unloadStation) {
             val u0 = s

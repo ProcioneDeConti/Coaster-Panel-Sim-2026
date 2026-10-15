@@ -31,7 +31,7 @@ object TagLayout {
         val station = p.blocks[0]
         val drive = p.blocks[1]
         // Generated end of the free-running course: the final brake and unload stay as built.
-        val finalIdx = p.blocks.indexOfLast { it.kind == BlockKind.BRAKE_RUN }
+        val finalIdx = p.blocks.indexOfLast { it.kind == BlockKind.BRAKE_RUN && !it.approach }
         val final = p.blocks[finalIdx]
         val courseStart = drive.end
         val courseEnd = final.brakeStart!!
@@ -138,7 +138,7 @@ object TagLayout {
                 "TRANSFER" -> if (blocks[i].kind == BlockKind.BRAKE_RUN) { transfer = i; say(t, "transfer on ${blocks[i].tag}", ok = true) }
                     else say(t, "transfer must be on a brake run")
                 "BLOCK_BRAKE", "TUNNEL" -> if (blocks[i].kind == BlockKind.BRAKE_RUN &&
-                    (blocks[i].exitLaunch > 0 || i == blocks.indexOfLast { it.kind == BlockKind.BRAKE_RUN })) rename(i, t)
+                    (blocks[i].exitLaunch > 0 || i == blocks.indexOfLast { it.kind == BlockKind.BRAKE_RUN && !it.approach } || blocks[i].approach)) rename(i, t)
                             }
         }
         // ---- Trim brakes: cap speed, but never below what clears the track up to the next brake ----

@@ -82,6 +82,29 @@ class RidePlc(val plant: Plant) {
     private val stallT = DoubleArray(n)
     private val rowFaultT = DoubleArray(profile.rows)
     private val dwellT = DoubleArray(n)
+    /** Seconds the train in each block has been held at its stop waiting for the block ahead (stacking). */
+    val holdT = DoubleArray(n)
+    /** Trains currently held at a block brake or lift crest because the block ahead is occupied. */
+    val stackedTrains get() = holdT.count { it > 0 }
+    /** Current stack-up (2+ trains held) duration, seconds, and how many stack-ups there have been. */
+    var stackT = 0.0; private set
+    var stackEvents = 0; private set
+
+    // ---------- Restraint walk check ----------
+    /** Operator must check every car (push-pull test, belts) before the load side may go ready. */
+    var restraintWalk = false
+    /** Cars checked by the operator since the restraints last opened. */
+    val carChecked = BooleanArray(profile.rows)
+    val walkComplete get() = carChecked.all { it }
+
+    // ---------- Launch rollback recovery ----------
+    var rollbacks = 0; private set
+    /** Maintenance has inspected the train and launch track after a rollback. */
+    var rollbackInspected = false; private set
+    /** Recovered from a rollback: the next launch waits for an operator to authorize it. */
+    var relaunchHold = false; private set
+    var relaunchArmed = false; private set
+    private var rollbackText = ""
     /** Seconds a train dwells in an unload station before it is released to load. */
     val unloadDwellSec = 8.0
 
@@ -148,6 +171,64 @@ class RidePlc(val plant: Plant) {
     val loadEstopOk get() = fx("LOAD_STAND_ESTOP_NC", !inputs.loadStandEstop)
     val unloadEstopOk get() = fx("UNLOAD_STAND_ESTOP_NC", !inputs.unloadStandEstop)
     val remoteEstopOk get() = fx("REMOTE_ESTOP_OK", !plant.faults.safetyCircuit)
+
+    /**
+     * Operator restraint check of car [r] in the station: push-pull every restraint and look at the belts. Belts found
+     * undone are fastened; a restraint that is not down is pushed down (it locks unless it is faulty). Returns a message.
+     */
+    fun checkCar(r: Int): String {
+        val t = plant.stationTrain() ?: return "No train in the station"
+        if (restraintCmd) return "Close the restraints first"
+        val per = t.seatsPerRow
+        val notLocked = (0 until per).filter { !t.seatLocked[r * per + it] }
+        val belts = (0 until per).filter { t.seatTaken[r * per + it] && !t.beltOn[r * per + it] }
+        belts.forEach { t.beltOn[r * per + it] = true }
+        notLocked.forEach { k -> if (r * per + k != plant.faults.restraintSeat) t.seatLocked[r * per + k] = true }
+        val stillBad = (0 until per).filter { !t.seatLocked[r * per + it] }
+        carChecked[r] = stillBad.isEmpty() && rowLocked(r)
+        val msg = buildList {
+            if (belts.isNotEmpty()) add("seatbelt fastened (seat ${belts.joinToString { "${it + 1}" }})")
+            if (notLocked.isNotEmpty() && stillBad.size < notLocked.size) add("restraint pushed down")
+            if (stillBad.isNotEmpty()) add("seat ${stillBad.joinToString { "${it + 1}" }} restraint WILL NOT LOCK")
+            if (!rowLocked(r) && stillBad.isEmpty()) add("row lock switch not made")
+        }
+        return "Car ${r + 1}: " + if (msg.isEmpty()) "checked OK" else msg.joinToString(", ")
+    }
+
+    /** Train is stopped somewhere on the launch track after a rollback. */
+    val rollbackAtRest: Boolean get() {
+        val tr = plant.trains.firstOrNull { it.id == launchTrain } ?: return false
+        return launchState == LaunchState.ROLLBACK && tr.spike <= 0 && abs(tr.v) < 0.05 && profile.blockAt(tr.s).kind == BlockKind.LAUNCH
+    }
+
+    /** Maintenance sign-off of the post-rollback inspection (train, LSM, rollback brakes). */
+    fun signOffRollbackInspection(): String {
+        if (launchState != LaunchState.ROLLBACK) return "No rollback to recover"
+        if (!rollbackAtRest) return "Train not yet at rest on the launch track"
+        if (rollbackInspected) return "Inspection already signed off"
+        rollbackInspected = true
+        alarms.info("RB", "Rollback inspection signed off – train $launchTrain, launch track and rollback brakes OK")
+        return "Inspection signed off – FAULT RESET to recover the train"
+    }
+
+    /** Operator authorizes the first launch after a rollback recovery. */
+    fun authorizeRelaunch(): String {
+        if (!relaunchHold) return "No relaunch pending"
+        if (plant.trainAtStop(1)?.let { abs(it.v) < 0.05 } != true) return "Train not at the launch position yet"
+        if (!lsmReady) return "LSM drive not ready"
+        relaunchArmed = true
+        alarms.info("RB", "Relaunch authorized")
+        return "Relaunch authorized"
+    }
+
+    /** Rollback recovery checklist for the HMI. */
+    val rollbackSteps: List<Permissive> get() = listOf(
+        Permissive("Train at rest on the launch track", rollbackAtRest || relaunchHold),
+        Permissive("Maintenance inspection signed off", rollbackInspected || relaunchHold),
+        Permissive("Fault reset – rollback cleared", relaunchHold),
+        Permissive("Train returned to the launch position", relaunchHold && plant.trainAtStop(1)?.let { abs(it.v) < 0.05 } == true),
+        Permissive("Relaunch authorized", relaunchArmed),
+    )
 
     /** Install (true/false) or remove (null) a force, logged like Logix does. */
     fun force(tag: String, v: Boolean?) {
@@ -321,6 +402,8 @@ class RidePlc(val plant: Plant) {
             }
             if (close) alarms.raise("MB_GAP", "Moving block – following train inside minimum spacing", Severity.ESTOP)
         }
+        // A rollback stays latched until maintenance has inspected the train.
+        if (launchState == LaunchState.ROLLBACK) alarms.condition("ROLLBACK", rollbackText, Severity.CSTOP, !rollbackInspected)
         if (hasSwitch) {
             if (plant.switchOverrun) alarms.raise("SW_OVR", "Switch track not aligned – train stopped at the end of the switch table", Severity.ESTOP)
             val there = if (switchCmd) switchSpikeLs else switchStationLs
@@ -367,7 +450,11 @@ class RidePlc(val plant: Plant) {
             val left = alarms.reset()
             if (stopFaults > 0) trackClear("fault cleared")
             alarms.acknowledgeAll()
-            if (launchState == LaunchState.ROLLBACK && !alarms.isActive("ROLLBACK")) launchState = LaunchState.IDLE
+            if (launchState == LaunchState.ROLLBACK && !alarms.isActive("ROLLBACK")) {
+                launchState = LaunchState.IDLE
+                relaunchHold = true; relaunchArmed = false
+                alarms.info("RB", "Rollback recovery – LSM returning train $launchTrain to the launch position; relaunch needs authorization")
+            }
             if (state == RideState.ESTOP && !alarms.anyActive(Severity.ESTOP)) setState(RideState.STOPPED)
             alarms.info("RESET", if (left == 0) "Fault reset – all faults cleared" else "Fault reset – $left fault(s) still present")
         }
@@ -426,13 +513,19 @@ class RidePlc(val plant: Plant) {
         if (rise("gClose", i.gatesClose)) gateCmd = false
         // An operator's ready is only accepted (and only held) while their foot switch shows them at the stand.
         if (rise("ldRdy", i.loadReady)) {
-            if (loadAtStand) loadReady = !loadReady else alarms.info("STN", "Load ready refused – no operator at the load stand (foot switch)")
+            when {
+                !loadAtStand -> alarms.info("STN", "Load ready refused – no operator at the load stand (foot switch)")
+                restraintWalk && !loadReady && !walkComplete -> alarms.info("STN", "Load ready refused – restraint check not complete (car " +
+                    carChecked.indices.filter { !carChecked[it] }.joinToString { "${it + 1}" } + ")")
+                else -> loadReady = !loadReady
+            }
         }
         if (rise("unRdy", i.unloadReady)) {
             if (unloadAtStand) unloadReady = !unloadReady else alarms.info("STN", "Unload ready refused – no operator at the unload stand (foot switch)")
         }
         if (!loadAtStand) loadReady = false
         if (!unloadAtStand) unloadReady = false
+        if (restraintCmd || !inStation) carChecked.fill(false)
         val restraintsOk = allRowsLocked && !restraintCmd
         val gatesOk = gatesClosed && !gateCmd
 
@@ -471,6 +564,11 @@ class RidePlc(val plant: Plant) {
                     if (dispatchTimes.size > 20) dispatchTimes.removeFirst()
                     loadReady = false; unloadReady = false
                     alarms.info("DISP", "Train ${occ[0]} dispatched")
+                    plant.stationTrain()?.let { st ->
+                        val open = st.seatTaken.indices.filter { st.seatTaken[it] && !st.beltOn[it] }
+                        if (open.isNotEmpty()) alarms.info("CHECK", "Train ${st.id} dispatched with a seatbelt undone – " +
+                            open.joinToString { "car ${it / st.seatsPerRow + 1} seat ${it % st.seatsPerRow + 1}" })
+                    }
                 }
             }
         }
@@ -500,6 +598,21 @@ class RidePlc(val plant: Plant) {
                 }
             }
         }
+        // Stacking: a train standing at its stop (or the lift crest) waiting for the block ahead.
+        for (b in 0 until n) {
+            val blk = profile.blocks[b]
+            val held = occ[b] != -1 && !releaseLatch[b] && !followClear(b) && when (blk.kind) {
+                BlockKind.LIFT -> crestPx && occ[b] != -1 && plant.chainSpeed < 0.05 && running
+                BlockKind.BRAKE_RUN, BlockKind.UNLOAD -> plant.trainAtStop(b)?.let { it.id == occ[b] && abs(it.v) < 0.05 } == true
+                else -> false
+            }
+            if (held && holdT[b] == 0.0 && blk.kind == BlockKind.BRAKE_RUN && running) {
+                alarms.info("STACK", "${blk.tag} ${blk.name} holding train ${occ[b]} – ${profile.blocks[next(b)].tag} occupied")
+            }
+            holdT[b] = if (held) holdT[b] + dt else 0.0
+        }
+        if (stackedTrains >= 2) { if (stackT == 0.0) stackEvents++; stackT += dt } else stackT = 0.0
+
         // An E-Stop cancels releases for trains still at their stop. A train that has already left the stop
         // keeps its release so it can complete the move after a restart instead of being stranded.
         if (eStopped) for (b in 0 until n) {
@@ -568,7 +681,7 @@ class RidePlc(val plant: Plant) {
         if (eStopped && launchState != LaunchState.ROLLBACK) launchState = LaunchState.IDLE
         when (launchState) {
             LaunchState.IDLE -> {
-                if (ready && nextClear(1) && lsmReady && (running || manualRelease)) launchRequest = true
+                if (ready && nextClear(1) && lsmReady && (running || manualRelease) && (!relaunchHold || relaunchArmed)) launchRequest = true
                 if (!ready || !lsmReady || (!running && !manual)) launchRequest = false
                 // Swing launch: slide the switch track to the spike line first; charge once it is locked there.
                 if (launchRequest) {
@@ -577,6 +690,7 @@ class RidePlc(val plant: Plant) {
                 }
             }
             LaunchState.CHARGING -> if (launchT > 3.0) {
+                if (relaunchHold) { relaunchHold = false; relaunchArmed = false }
                 launchState = LaunchState.FIRING; launchT = 0.0
                 launchTrain = occ[1]; launchExitSeen = plant.launchExitEvent
                 launchStage = if (swing != null) 0 else 2
@@ -596,8 +710,7 @@ class RidePlc(val plant: Plant) {
                         alarms.info("LSM", if (back) "Swing launch – backward" else "Swing launch – final forward")
                     }
                     launchT > 45.0 -> {
-                        launchState = LaunchState.ROLLBACK
-                        alarms.raise("ROLLBACK", "Swing launch – train $launchTrain did not return to the launch track", Severity.CSTOP)
+                        enterRollback("Swing launch – train $launchTrain did not return to the launch track")
                     }
                 }
             }
@@ -618,8 +731,7 @@ class RidePlc(val plant: Plant) {
             LaunchState.VERIFY -> when {
                 occ[next(1)] == launchTrain -> launchState = LaunchState.IDLE
                 launchT > profile.launchVerifySec || trainSpeed(launchTrain) < -0.5 -> {
-                    launchState = LaunchState.ROLLBACK
-                    alarms.raise("ROLLBACK", "Launch rollback – train $launchTrain failed to crest top hat", Severity.CSTOP)
+                    enterRollback("Launch rollback – train $launchTrain failed to crest top hat")
                 }
             }
             LaunchState.ROLLBACK -> Unit
@@ -636,6 +748,14 @@ class RidePlc(val plant: Plant) {
             (launchState == LaunchState.FIRING || launchState == LaunchState.SWING || launchState == LaunchState.VERIFY)
         plant.lsmPositionCmd = !eStopped && launchState != LaunchState.FIRING && launchState != LaunchState.SWING &&
             launchState != LaunchState.ROLLBACK
+    }
+
+    private fun enterRollback(text: String) {
+        launchState = LaunchState.ROLLBACK
+        rollbacks++
+        rollbackInspected = false
+        rollbackText = text
+        alarms.raise("ROLLBACK", text, Severity.CSTOP)
     }
 
     private val swing get() = profile.swing

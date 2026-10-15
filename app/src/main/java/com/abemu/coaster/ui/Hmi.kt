@@ -28,6 +28,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
@@ -95,6 +96,8 @@ fun HmiTerminal(vm: SimViewModel, modifier: Modifier = Modifier) {
     Column(
         modifier
             .background(BezelBrush)
+            // Night: the PanelView backlight is turned down and the bezel sits in the dark.
+            .drawWithContent { drawContent(); if (Night.on) drawRect(Color(0xFF000610).copy(alpha = 0.55f)) }
             .padding(10.dp),
     ) {
         Row(Modifier.padding(bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {

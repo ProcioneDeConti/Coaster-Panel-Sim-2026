@@ -23,6 +23,7 @@ import com.abemu.coaster.ui.Haptics
 import com.abemu.coaster.ui.HmiTerminal
 import com.abemu.coaster.ui.MapPane
 import com.abemu.coaster.ui.OperatorConsole
+import com.abemu.coaster.ui.RadioPlayer
 import com.abemu.coaster.ui.RideHaptics
 import com.abemu.coaster.ui.RideSounds
 
@@ -51,6 +52,7 @@ class MainActivity : ComponentActivity() {
             MaterialTheme(colorScheme = darkColorScheme()) {
                 RideSounds(vm)
                 RideHaptics(vm)
+                RadioPlayer(vm)
                 ScaledToDesign {
                 Row(Modifier.fillMaxSize().background(Color(0xFF111316))) {
                     val divider = @androidx.compose.runtime.Composable {

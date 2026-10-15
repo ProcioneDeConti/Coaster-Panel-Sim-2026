@@ -72,9 +72,11 @@ fun MapPane(vm: SimViewModel, modifier: Modifier = Modifier) {
                 val id = plc.occ[b.index]
                 val brk = plc.plant.brakes[b.index]
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Indicator(id != -1, Hmi.Bad, Hmi.Ok, 10)
+                    val hold = plc.holdT[b.index]
+                    Indicator(id != -1, if (hold > 0) Hmi.Warn else Hmi.Bad, Hmi.Ok, 10)
                     HmiLabel(" ${b.tag}", 11.sp, bold = true, modifier = Modifier.width(34.dp))
-                    HmiLabel(b.name, 10.sp, color = Hmi.Dim, modifier = Modifier.weight(1f))
+                    HmiLabel(b.name + if (hold > 0) "  · HOLD ${hold.toInt()} s" else "", 10.sp,
+                        color = if (hold > 0) Color(0xFF8A5A00) else Hmi.Dim, modifier = Modifier.weight(1f))
                     HmiLabel(if (id != -1) "T$id" + plc.pending[b.index].let { f -> if (f != -1) "+T$f" else "" } else "—", 11.sp, bold = true, modifier = Modifier.width(48.dp))
                     if (b.stopPos != null) Indicator(brk.isOpen, Hmi.Ok, Hmi.Bad, 10) else Box(Modifier.width(10.dp))
                 }

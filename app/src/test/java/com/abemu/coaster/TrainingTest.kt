@@ -79,8 +79,10 @@ class TrainingTest {
     @Test fun launchRollback() = with(start("rollback")) {
         assertTrue("no rollback", run(90.0) { plc.alarms.isActive("ROLLBACK") })
         ack(); wo("LSM")
-        run(90.0) { plc.state == RideState.STOPPED }
+        run(90.0) { plc.state == RideState.STOPPED && plc.rollbackAtRest }
+        plc.signOffRollbackInspection()
         reset(); run(30.0); restart()
+        assertTrue("train not back at the launch: " + dbg(), run(60.0) { plc.authorizeRelaunch() == "Relaunch authorized" })
         assertTrue("no good launch", run(240.0) { finished })
         check(70)
     }

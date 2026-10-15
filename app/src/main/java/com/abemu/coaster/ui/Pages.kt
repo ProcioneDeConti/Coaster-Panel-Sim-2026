@@ -4,6 +4,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -34,6 +35,10 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.drawText
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -41,6 +46,7 @@ import androidx.compose.ui.unit.sp
 import com.abemu.coaster.SimViewModel
 import com.abemu.coaster.sim.BlockKind
 import com.abemu.coaster.sim.KeyMode
+import com.abemu.coaster.sim.LaunchState
 import com.abemu.coaster.sim.ProfileType
 import com.abemu.coaster.sim.RideState
 import com.abemu.coaster.sim.TransferState
@@ -58,12 +64,21 @@ fun StationPage(vm: SimViewModel) {
     val plant = plc.plant
     val inp = plc.inputs
     val st = plant.stationTrain()
+    val tm = rememberTextMeasurer()
     Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         Column(Modifier.weight(1.25f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             HmiFrame("STATION – ${if (st != null) "TRAIN ${st.id} IN STATION" else "NO TRAIN"}") {
-                // Train plan view: rows, restraints, gates
-                Canvas(Modifier.fillMaxWidth().height(180.dp)) {
-                    val rows = plc.profile.rows
+                // Train plan view: per-seat restraint locks, the operator's car checks, gates. Tap a car to check it.
+                var walkMsg by remember { mutableStateOf("") }
+                val rowsN = plc.profile.rows
+                Canvas(Modifier.fillMaxWidth().height(180.dp).pointerInput(plc) {
+                    detectTapGestures { p ->
+                        val carW = (size.width - 40f) / rowsN
+                        val r = ((p.x - 20f) / carW).toInt()
+                        if (p.y in 32f..108f && r in 0 until rowsN) walkMsg = plc.checkCar(r)
+                    }
+                }) {
+                    val rows = rowsN
                     val margin = 20f
                     val carW = (size.width - margin * 2) / rows
                     val trainY = 40f
@@ -72,10 +87,25 @@ fun StationPage(vm: SimViewModel) {
                     for (r in 0 until rows) {
                         val x0 = margin + r * carW
                         if (st != null) {
+                            val rowOk = plant.rowLockSensor(r)
                             drawRect(Color(0xFF1565C0), Offset(x0 + 3, trainY), Size(carW - 6, trainH))
-                            val locked = plant.rowLockSensor(r)
-                            drawRect(if (locked) Color(0xFF2EBD59) else Color(0xFFE53935),
-                                Offset(x0 + 10, trainY + 12), Size(carW - 20, trainH - 24))
+                            // Seats in two columns, front to back; each lit by its own lock switch.
+                            val per = st.seatsPerRow
+                            val cols = if (per >= 2) 2 else 1
+                            val lines = (per + cols - 1) / cols
+                            val sw = (carW - 20) / lines
+                            val sh = (trainH - 16) / cols
+                            for (k in 0 until per) {
+                                val idx = r * per + k
+                                val o = Offset(x0 + 10 + (k / cols) * sw, trainY + 8 + (k % cols) * sh)
+                                drawRect(if (st.seatLocked[idx]) Color(0xFF2EBD59) else Color(0xFFE53935), o + Offset(2f, 2f), Size(sw - 4, sh - 4))
+                                if (st.seatTaken[idx]) drawCircle(Color(0x99000000), minOf(sw, sh) * 0.18f, o + Offset(sw / 2, sh / 2))
+                            }
+                            if (plc.carChecked[r]) {
+                                drawRect(Color.White, Offset(x0 + 4, trainY + 1), Size(carW - 8, trainH - 2), style = Stroke(4f))
+                                drawText(tm, "✓", Offset(x0 + carW / 2 - 6, trainY - 30), TextStyle(color = Hmi.Ok, fontSize = 16.sp, fontWeight = FontWeight.Bold))
+                            }
+                            if (!rowOk) drawRect(Color(0xFFFFEB3B), Offset(x0 + 4, trainY + 1), Size(carW - 8, trainH - 2), style = Stroke(3f))
                         }
                     }
                     // Gates (load side, bottom): set back from the train so each leaf swings 90° about its hinge
@@ -104,8 +134,19 @@ fun StationPage(vm: SimViewModel) {
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     HmiLabel("Unload platform ▲", 10.sp, color = Hmi.Dim)
-                    HmiLabel("Row lock:  ■ locked  ■ unlocked", 10.sp, color = Hmi.Dim)
+                    HmiLabel("Seat lock:  ■ locked  ■ unlocked  ● rider", 10.sp, color = Hmi.Dim)
                     HmiLabel("Load gates ▼  (— closed  | open)", 10.sp, color = Hmi.Dim)
+                }
+                if (plc.restraintWalk) {
+                    val left = plc.carChecked.count { !it }
+                    HmiLabel(
+                        when {
+                            st == null -> "Restraint check: no train"
+                            left == 0 -> "Restraint check COMPLETE – load side may go ready"
+                            else -> "Restraint check: tap each car to push-pull test it ($left of $rowsN to check)"
+                        } + if (walkMsg.isNotEmpty()) "   ·   $walkMsg" else "",
+                        11.sp, bold = true, color = if (left == 0 && st != null) Hmi.Ok else Hmi.Info,
+                    )
                 }
             }
             HmiFrame("STATION CONTROLS (HMI)") {
@@ -391,7 +432,8 @@ fun MaintPage(vm: SimViewModel) {
                 }
             }
         }
-        Column(Modifier.weight(0.85f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Column(Modifier.weight(0.85f).fillMaxHeight().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            if (plc.profile.type == ProfileType.LAUNCH) RollbackFrame(vm, maintAccess)
             HmiFrame("TRANSFER TRACK / TRAIN STORAGE  (${plc.profile.blocks[plc.profile.transferBlock].tag})") {
                 Canvas(Modifier.fillMaxWidth().height(110.dp)) {
                     val ts = plc.transferState
@@ -431,6 +473,37 @@ fun MaintPage(vm: SimViewModel) {
     }
 }
 
+/** Launch rollback recovery: checklist, maintenance inspection sign-off and relaunch authorization. */
+@Composable
+private fun RollbackFrame(vm: SimViewModel, maintAccess: Boolean) {
+    val plc = vm.plc
+    var msg by remember { mutableStateOf("") }
+    val active = plc.launchState == LaunchState.ROLLBACK || plc.relaunchHold
+    HmiFrame("LAUNCH ROLLBACK RECOVERY" + if (plc.rollbacks > 0) "  (rollbacks: ${plc.rollbacks})" else "") {
+        if (!active) {
+            HmiLabel("No rollback. After a rollback: wait for the train to stop on the launch track, have maintenance inspect it " +
+                "and sign off, FAULT RESET, then authorize the relaunch once the LSM has returned it to the launch position.",
+                10.sp, color = Hmi.Dim)
+        } else {
+            plc.rollbackSteps.forEach { p ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Indicator(p.ok, Hmi.Ok, Hmi.Off, 12)
+                    HmiLabel("  ${p.label}", 11.sp)
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                HmiButton("SIGN OFF INSPECTION" + if (!maintAccess) " 🔒" else "", Modifier.weight(1f),
+                    enabled = maintAccess && plc.launchState == LaunchState.ROLLBACK && !plc.rollbackInspected, fontSize = 10.sp) {
+                    msg = plc.signOffRollbackInspection()
+                }
+                HmiButton("AUTHORIZE RELAUNCH", Modifier.weight(1f), enabled = plc.relaunchHold && !plc.relaunchArmed,
+                    activeColor = Hmi.Warn, fontSize = 10.sp) { msg = plc.authorizeRelaunch() }
+            }
+            if (msg.isNotEmpty()) HmiLabel(msg, 11.sp, color = Hmi.Info)
+        }
+    }
+}
+
 // ================================================================ INSTRUCTOR / SIM
 
 @Composable
@@ -449,7 +522,7 @@ fun SimPage(vm: SimViewModel, onOpenBuilder: () -> Unit, onOpenEditor: () -> Uni
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                     HmiLabel("Trains", 11.sp, modifier = Modifier.width(90.dp))
-                    (1..vm.plc.profile.initialStops.size.coerceAtMost(3)).forEach { n ->
+                    (1..vm.plc.profile.maxTrains).forEach { n ->
                         HmiButton("$n", enabled = off, active = vm.trainCount == n, activeColor = Hmi.Info) { vm.reconfigure(trains = n) }
                     }
                 }
@@ -510,6 +583,12 @@ fun SimPage(vm: SimViewModel, onOpenBuilder: () -> Unit, onOpenEditor: () -> Uni
                         plc.inputs.singleButtonDispatch = true
                     }
                 }
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    HmiLabel("Restraint check", 11.sp, modifier = Modifier.width(90.dp))
+                    HmiButton("REQUIRED", active = vm.restraintWalk, activeColor = Hmi.Info) { vm.restraintWalk = true }
+                    HmiButton("OFF", active = !vm.restraintWalk, activeColor = Hmi.Warn) { vm.restraintWalk = false }
+                    HmiLabel("tap each car on STATION before LOAD READY", 10.sp, color = Hmi.Dim)
+                }
             }
             HmiFrame("FAULT INJECTION – SYSTEM") {
                 FaultToggle("Safety circuit open (remote E-Stop)", f.safetyCircuit) { f.safetyCircuit = it }
@@ -520,6 +599,7 @@ fun SimPage(vm: SimViewModel, onOpenBuilder: () -> Unit, onOpenEditor: () -> Uni
                 } else {
                     FaultToggle("LSM drive fault", f.lsmFault) { f.lsmFault = it }
                     FaultToggle("Launch underspeed (causes rollback)", f.launchUnderspeed) { f.launchUnderspeed = it }
+                    if (!plc.profile.spec.lsmLift) FaultToggle("LSM derated – marginal launch (rolls back in a headwind > ~22 mph)", f.lsmDerate) { f.lsmDerate = it }
                     if (plc.hasSwitch) FaultToggle("Switch track jammed", f.switchStuck) { f.switchStuck = it }
                 }
                 FaultToggle("Station gate stuck open", f.gateStuck) { f.gateStuck = it }
@@ -537,6 +617,14 @@ fun SimPage(vm: SimViewModel, onOpenBuilder: () -> Unit, onOpenEditor: () -> Uni
                         HmiButton(if (r < 0) "–" else "${r + 1}", active = f.restraintRow == r,
                             activeColor = if (r < 0) Hmi.Info else Hmi.Bad) { f.restraintRow = r }
                     }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    HmiLabel("Seat restraint won't lock", 11.sp, modifier = Modifier.weight(1f))
+                    HmiButton("–", active = f.restraintSeat < 0, activeColor = Hmi.Info) { f.restraintSeat = -1 }
+                    HmiButton("RANDOM SEAT", active = f.restraintSeat >= 0, activeColor = Hmi.Bad, fontSize = 10.sp) {
+                        f.restraintSeat = (0 until plc.profile.rows * plc.profile.spec.ridersPerCar).random()
+                    }
+                    if (f.restraintSeat >= 0) HmiLabel("car ${f.restraintSeat / plc.profile.spec.ridersPerCar + 1} seat ${f.restraintSeat % plc.profile.spec.ridersPerCar + 1}", 10.sp, color = Hmi.Dim)
                 }
             }
         }

@@ -25,6 +25,8 @@ data class Block(
     val brakeStart: Double?,
     /** If > 0, an LSM past the stop point launches a released train to this speed (m/s). */
     val exitLaunch: Double = 0.0,
+    /** Short stacking block between the final brake run and the station (holds one train waiting for the station). */
+    val approach: Boolean = false,
 )
 
 /** Trim brake: fins that cap the train's speed through [start, end] at [maxSpeed] (m/s). */
@@ -107,6 +109,28 @@ class RideProfile(
     val rows get() = spec.cars
     val ridersPerTrain get() = spec.cars * spec.ridersPerCar
     val trainLength get() = spec.cars * 2.0 + 2.0
+    /**
+     * Lowest launch exit speed that carries a train over the top hat against a steady [headwind] (m/s), found by
+     * running the climb with the plant's free-rolling physics (gravity, rolling resistance, drag on the airspeed).
+     */
+    fun crestSpeedNeeded(headwind: Double = 0.0): Double = crestCache.getOrPut(headwind) {
+        fun crests(v0: Double): Boolean {
+            var s = launchEnd; var v = v0; val dt = 0.01
+            while (ahead(launchEnd, s) < ahead(launchEnd, crestSensor)) {
+                val sinA = slope(s).coerceIn(-0.95, 0.95)
+                val air = v + headwind
+                v += (-G * sinA - 0.012 * G - 0.0004 * air * kotlin.math.abs(air)) * dt
+                if (v <= 0) return false
+                s = wrap(s + v * dt)
+            }
+            return true
+        }
+        var lo = 0.0; var hi = launchSpeed * 1.5
+        repeat(30) { val mid = (lo + hi) / 2; if (crests(mid)) hi = mid else lo = mid }
+        hi
+    }
+    private val crestCache = HashMap<Double, Double>()
+
     /** Seconds allowed after launch for the train to reach the MCBR block before declaring rollback. */
     val launchVerifySec get() = 7.0 + spec.height / 15.0
 
@@ -137,7 +161,10 @@ class RideProfile(
     fun blockAt(s: Double): Block = blocks.first { inRange(s, it.start, it.end) }
 
     /** Block holding the transfer track: the last brake run before the station(s). */
-    val transferBlock: Int get() = transferOverride ?: blocks.last { it.kind == BlockKind.BRAKE_RUN }.index
+    val transferBlock: Int get() = transferOverride ?: blocks.last { it.kind == BlockKind.BRAKE_RUN && !it.approach }.index
+
+    /** Most trains the ride can run: one block must always be free for trains to move. */
+    val maxTrains: Int get() = minOf(initialStops.size, 4).let { if (blocks.size <= 4) minOf(it, 3) else it }
 
     /** Where trains sit at power-up: load station first, then working back from the station. */
     val initialStops: List<Double>

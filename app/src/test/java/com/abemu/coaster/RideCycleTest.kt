@@ -70,7 +70,7 @@ class RideCycleTest {
         val a = c0 + 0.15 * (c1 - c0)
         val px = c0 + 0.6 * (c1 - c0)
         val r = TagLayout.apply(base, listOf(
-            LayoutTag("TRIM_BRAKE", a / base.length, (a + 30) / base.length, "Trim 1"),
+            LayoutTag("TRIM_BRAKE", a / base.length, (a + 40) / base.length, "Trim 1"),
             LayoutTag("SENSOR", px / base.length, px / base.length, "MID"),
         ))
         assertTrue(r.report.toString(), r.rejected.isEmpty())
@@ -177,7 +177,12 @@ class RideCycleTest {
         assertTrue("${spec.name} no rollback", plc.alarms.isActive("ROLLBACK"))
         assertEquals(RideState.STOPPED, plc.state)
         plc.plant.faults.launchUnderspeed = false
+        // Reset alone may not recover a rollback: maintenance must inspect the train first.
         press(plc) { plc.inputs.faultReset = it }
+        assertTrue("${spec.name} rollback cleared without inspection", plc.alarms.isActive("ROLLBACK"))
+        assertEquals("Inspection signed off – FAULT RESET to recover the train", plc.signOffRollbackInspection())
+        press(plc) { plc.inputs.faultReset = it }
+        assertTrue("${spec.name} relaunch not held", plc.relaunchHold)
         step(plc, 120.0)
         val t = plc.plant.trains[0]
         assertTrue("${spec.name} train at ${t.s}", kotlin.math.abs(t.s - 70.0) < 1.0)

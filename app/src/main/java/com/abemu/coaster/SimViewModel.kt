@@ -36,6 +36,9 @@ enum class AccessLevel(val label: String, val pin: String?) {
     }
 }
 
+/** Park lighting setting. AUTO follows the tablet's clock (night from 20:00 to 07:00). */
+enum class Lighting(val label: String) { DAY("DAY"), NIGHT("NIGHT"), AUTO("AUTO (CLOCK)") }
+
 /** Screen arrangements for large tablets. */
 enum class ScreenLayout(val label: String) {
     HMI_CONSOLE("HMI + CONSOLE"), HMI_MAP_CONSOLE("HMI + MAP + CONSOLE"), MAP_CONSOLE("MAP + CONSOLE");
@@ -79,6 +82,18 @@ class SimViewModel : ViewModel() {
     val queue = com.abemu.coaster.sim.GuestQueue()
     /** Shows debug-only panels (sound test) on the INSTRUCTOR page. */
     var debugTools by mutableStateOf(false)
+    /** Operators must walk the train (check every car) before the load side goes ready. */
+    var restraintWalk by mutableStateOf(true)
+    /** Park lighting: night operation dims the HMI and console, makes lamps glow and lights the track on the plan view. */
+    var lighting by mutableStateOf(Lighting.DAY)
+    val night: Boolean get() = when (lighting) {
+        Lighting.DAY -> false
+        Lighting.NIGHT -> true
+        Lighting.AUTO -> java.time.LocalTime.now().hour.let { it >= 20 || it < 7 }
+    }
+    /** Radio chatter from the supervisor and maintenance. */
+    var radioOn by mutableStateOf(true)
+    val radio = com.abemu.coaster.sim.RadioDesk()
     var access by mutableStateOf(AccessLevel.OPERATOR)
     /** Training drill in progress (or just finished, until dismissed). */
     var drill by mutableStateOf<com.abemu.coaster.sim.Drill?>(null); private set
@@ -101,10 +116,14 @@ class SimViewModel : ViewModel() {
                     weather.update(scanDt)
                     plc.weather.windMph = weather.windMph
                     plc.weather.strikeMi = weather.strikeMi
+                    plc.plant.windMs = weather.windMph * 0.44704
+                    plc.plant.windFromDeg = weather.dirDeg
+                    plc.restraintWalk = restraintWalk
                     plc.scan(scanDt)
                     plc.plant.step(scanDt)
                     trends.update(plc, scanDt)
                     queue.update(scanDt, plc)
+                    radio.update(scanDt, plc, radioOn)
                     drill?.let { d ->
                         val was = d.finished
                         d.update(scanDt)
@@ -113,6 +132,7 @@ class SimViewModel : ViewModel() {
                     acc -= scanDt
                 }
                 mapServer.publish(plc, drill)
+                com.abemu.coaster.ui.Night.on = night
                 frame.longValue++
             }
         }
@@ -128,7 +148,7 @@ class SimViewModel : ViewModel() {
     }
 
     private fun build(id: String, trains: Int) = profile(id).let { p ->
-        RidePlc(Plant(p, trains.coerceAtMost(p.initialStops.size.coerceAtMost(3))))
+        RidePlc(Plant(p, trains.coerceAtMost(p.maxTrains)))
     }
 
     /**

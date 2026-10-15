@@ -26,6 +26,15 @@ class Weather(seed: Int = 7) {
     var strikeMi: Double? = null; private set
     /** Storm cell distance in miles (negative = approaching side). Only meaningful during a storm. */
     var cellMi = 0.0; private set
+    /** Compass bearing the wind blows from, degrees (wind vane); veers slowly, faster in gusty weather. */
+    var dirDeg = 240.0; private set
+    /** Anemometer history for the gust trace: one sample per second, newest last ([HISTORY_SEC] long). */
+    val history = ArrayDeque<Float>()
+    private var histT = 0.0
+    private var histPeak = 0.0
+    /** Highest gust and mean speed over the last 2 minutes, mph. */
+    val peak2Min get() = history.takeLast(120).maxOrNull()?.toDouble() ?: windMph
+    val mean2Min get() = history.takeLast(120).takeIf { it.isNotEmpty() }?.average() ?: windMph
 
     private var baseWind = 6.0
     private var gust = 0.0
@@ -79,6 +88,19 @@ class Weather(seed: Int = 7) {
         }
         gust *= (1 - dt / 3).coerceAtLeast(0.0)
         windMph = max(0.0, baseWind + gust + sin(t * 1.7) * 0.6)
+        // Wind vane: a slow random walk about the prevailing south-westerly; storms swing it round with the cell.
+        val prevailing = if (current == WeatherPreset.STORM) 240.0 + cellMi * 3 else 240.0
+        dirDeg += (prevailing - dirDeg) * 0.01 * dt + (rnd.nextDouble() - 0.5) * (6.0 + gust) * kotlin.math.sqrt(dt)
+        dirDeg = (dirDeg % 360 + 360) % 360
+        // Gust trace: the peak in each second.
+        histPeak = max(histPeak, windMph)
+        histT += dt
+        if (histT >= 1.0) {
+            histT -= 1.0
+            history.addLast(histPeak.toFloat())
+            if (history.size > HISTORY_SEC) history.removeFirst()
+            histPeak = 0.0
+        }
 
         // Lightning: strikes scatter within a few miles of the cell, more often as it builds.
         strikeAge += dt
@@ -91,6 +113,10 @@ class Weather(seed: Int = 7) {
                 strikeAge = 0.0
             }
         }
+    }
+
+    companion object {
+        const val HISTORY_SEC = 600
     }
 }
 

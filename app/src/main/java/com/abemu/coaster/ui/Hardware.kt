@@ -59,6 +59,11 @@ object Lens {
 }
 
 /** Shared 2.5 Hz flasher, like a PLC flasher bit. */
+/** Night operation: the console dims and lit lenses glow; the HMI backlight dims; the plan view shows track lighting. */
+object Night {
+    var on by androidx.compose.runtime.mutableStateOf(false)
+}
+
 fun flasher(): Boolean = (System.currentTimeMillis() / 400) % 2 == 0L
 
 /** Engraved black legend plate under a device. */
@@ -158,13 +163,13 @@ fun PushButton(
             buttonCollar(r)
             val capR = r * (if (pressed) 0.66f else 0.72f)
             val on = lit && illuminated
+            val night = Night.on
             if (on) {
-                drawCircle(
-                    Brush.radialGradient(listOf(color.copy(alpha = 0.55f), Color.Transparent), center, r * 1.0f),
-                    r * 1.0f,
-                )
+                val g = if (night) r * 1.7f else r
+                drawCircle(Brush.radialGradient(listOf(color.copy(alpha = if (night) 0.8f else 0.55f), Color.Transparent), center, g), g)
             }
-            val base = if (!illuminated) color else if (on) color else lerp(color, Color.Black, 0.62f)
+            val base = if (!illuminated) lerp(color, Color.Black, if (night) 0.6f else 0f)
+                else if (on) color else lerp(color, Color.Black, if (night) 0.85f else 0.62f)
             drawCircle(
                 Brush.radialGradient(
                     listOf(lerp(base, Color.White, if (on) 0.55f else 0.18f), base, lerp(base, Color.Black, 0.35f)),
@@ -186,9 +191,13 @@ fun PilotLight(legend: String, color: Color, lit: Boolean, modifier: Modifier = 
     Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
         Canvas(Modifier.size(size)) {
             val r = this.size.minDimension / 2
-            if (lit) drawCircle(Brush.radialGradient(listOf(color.copy(alpha = 0.6f), Color.Transparent), center, r * 1.25f), r * 1.25f)
+            val night = Night.on
+            if (lit) {
+                val g = r * (if (night) 2.1f else 1.25f)
+                drawCircle(Brush.radialGradient(listOf(color.copy(alpha = if (night) 0.85f else 0.6f), Color.Transparent), center, g), g)
+            }
             lightRing(r)
-            val c = if (lit) color else lerp(color, Color.Black, 0.7f)
+            val c = if (lit) color else lerp(color, Color.Black, if (night) 0.88f else 0.7f)
             val lens = r * 0.8f
             drawCircle(
                 Brush.radialGradient(
@@ -243,6 +252,7 @@ fun EStopButton(
             val lit = pressed && flasher()
             drawCircle(Color.Black.copy(alpha = 0.4f), head * 1.04f, center + Offset(3f, 5f))
             if (lit) drawCircle(Brush.radialGradient(listOf(Color(0xCCFF2020), Color.Transparent), center, r * 0.95f), r * 0.95f)
+            if (Night.on && !lit) drawCircle(Color.Black.copy(alpha = 0.45f), r)
             drawCircle(
                 Brush.radialGradient(
                     if (lit) listOf(Color(0xFFFFD0D0), Color(0xFFFF3030), Color(0xFFB00000))
@@ -348,7 +358,8 @@ fun SteelLabel(text: String, modifier: Modifier = Modifier) {
     Box(
         modifier
             .background(
-                Brush.verticalGradient(listOf(Color(0xFFE4E7EA), Color(0xFFB9BEC3), Color(0xFFD3D7DB), Color(0xFFA9AEB4))),
+                Brush.verticalGradient(listOf(Color(0xFFE4E7EA), Color(0xFFB9BEC3), Color(0xFFD3D7DB), Color(0xFFA9AEB4))
+                    .map { if (Night.on) lerp(it, Color.Black, 0.6f) else it }),
                 RoundedCornerShape(2.dp),
             )
             .border(1.dp, Color(0xFF6E747A), RoundedCornerShape(2.dp))

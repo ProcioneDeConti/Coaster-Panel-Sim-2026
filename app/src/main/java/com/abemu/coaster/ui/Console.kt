@@ -40,7 +40,7 @@ fun OperatorConsole(vm: SimViewModel, modifier: Modifier = Modifier) {
 
     Column(
         modifier
-            .background(Brush.verticalGradient(listOf(Color(0xFF3A3F45), Color(0xFF26292D))))
+            .background(Brush.verticalGradient(if (Night.on) listOf(Color(0xFF14171A), Color(0xFF0A0B0D)) else listOf(Color(0xFF3A3F45), Color(0xFF26292D))))
             .padding(10.dp)
             .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -140,6 +140,7 @@ fun OperatorConsole(vm: SimViewModel, modifier: Modifier = Modifier) {
                 PushButton("DISPATCH", Lens.Green, ready && blink || plc.releaseLatch[0], { inp.dispatchR = it }, size = 56.dp)
             }
         }
+        ConsoleRadio(vm)
         Spacer(Modifier.height(4.dp))
     }
 }
@@ -156,7 +157,7 @@ private fun OperatorStand(
 ) {
     Column(
         Modifier
-            .background(Color(0xFF2F3338), RoundedCornerShape(6.dp))
+            .background(if (Night.on) Color(0xFF15181B) else Color(0xFF2F3338), RoundedCornerShape(6.dp))
             .border(1.dp, Color(0xFF6A7178), RoundedCornerShape(6.dp))
             .padding(6.dp),
         horizontalAlignment = Alignment.CenterHorizontally,

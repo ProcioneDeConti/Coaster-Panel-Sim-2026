@@ -32,6 +32,9 @@ import com.abemu.coaster.sim.WeatherPreset
 import kotlin.math.cos
 import kotlin.math.sin
 
+private fun compass(deg: Double): String =
+    listOf("N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW")[((deg / 22.5) + 0.5).toInt() % 16]
+
 /** PARK OPS: the ride's line and the weather instruments that drive the weather hold. */
 @Composable
 fun OpsPage(vm: SimViewModel) {
@@ -78,6 +81,7 @@ private fun QueueFrame(vm: SimViewModel, instructor: Boolean) {
         ValueBox("Theoretical capacity at target", "${(3600 / plc.dispatchTarget * seats).toInt()} /h  (${seats} seats @ ${plc.dispatchTarget.toInt()} s)")
         ValueBox("Last train", if (q.lastLoad.second == 0) "—" else "${q.lastLoad.first} / ${q.lastLoad.second} seats")
         ValueBox("Riders today", "${q.riders}")
+        ValueBox("Trains held on the brakes now / stack-ups", "${plc.stackedTrains} / ${plc.stackEvents}")
         ValueBox("Balked at the entrance (wait too long)", "${q.balked}")
         ValueBox("Walked off the line (ride down)", "${q.walkedOff}")
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -131,6 +135,64 @@ private fun WeatherFrame(vm: SimViewModel, instructor: Boolean) {
             drawLine(Color.Black, Offset(lx, 0f), Offset(lx, size.height), 3f)
         }
 
+        // Gust trace: peak wind each second over the last 10 minutes, with the hold limit and the all-clear level.
+        HmiLabel("GUST TRACE – last ${com.abemu.coaster.sim.Weather.HISTORY_SEC / 60} min", 10.sp, bold = true, color = Hmi.Dim)
+        Canvas(Modifier.fillMaxWidth().height(90.dp)) {
+            val top = maxOf(50f, (w.history.maxOrNull() ?: 0f) + 5f)
+            fun y(mph: Float) = size.height * (1 - mph / top)
+            drawRect(Color(0xFF1B2229))
+            for (g in 10 until top.toInt() step 10) drawLine(Color(0xFF2E3A44), Offset(0f, y(g.toFloat())), Offset(size.width, y(g.toFloat())), 1f)
+            val lim = wx.windLimitMph.toFloat()
+            drawLine(Color(0xFFD42020), Offset(0f, y(lim)), Offset(size.width, y(lim)), 2f)
+            drawLine(Color(0xFF2EBD59), Offset(0f, y(lim - 5)), Offset(size.width, y(lim - 5)), 1.5f,
+                pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(6f, 6f)))
+            val n = com.abemu.coaster.sim.Weather.HISTORY_SEC
+            val h = w.history
+            if (h.size >= 2) {
+                val path = androidx.compose.ui.graphics.Path()
+                h.forEachIndexed { i, v ->
+                    val x = size.width * (n - h.size + i) / (n - 1).toFloat()
+                    if (i == 0) path.moveTo(x, y(v)) else path.lineTo(x, y(v))
+                }
+                drawPath(path, Color(0xFF64B5F6), style = Stroke(2f))
+            }
+        }
+        HmiLabel("— hold limit ${wx.windLimitMph.toInt()} mph   - - all-clear below ${(wx.windLimitMph - 5).toInt()} mph", 9.sp, color = Hmi.Dim)
+
+        // Wind vane and what the wind does to a launch.
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Canvas(Modifier.size(96.dp)) {
+                val c = Offset(size.width / 2, size.height / 2)
+                val r = size.minDimension / 2 - 10
+                drawCircle(Color(0xFF1B2229), r + 8, c)
+                drawCircle(Color(0xFF55606A), r, c, style = Stroke(1.5f))
+                val th = Math.toRadians(w.dirDeg)
+                // Arrow points downwind, from the side the wind comes from.
+                val from = c + Offset((r * sin(th)).toFloat(), (-r * cos(th)).toFloat())
+                val to = c - Offset((r * 0.6 * sin(th)).toFloat(), (-r * 0.6 * cos(th)).toFloat())
+                drawLine(Color(0xFF64B5F6), from, to, 4f)
+                drawCircle(Color(0xFF64B5F6), 5f, to)
+                val plc = vm.plc
+                if (plc.profile.type == com.abemu.coaster.sim.ProfileType.LAUNCH) {
+                    val a = plc.profile.planPoint(plc.profile.launchStart)
+                    val b = plc.profile.planPoint(plc.profile.launchEnd)
+                    val d = Offset((b.first - a.first).toFloat(), (b.second - a.second).toFloat())
+                    val len = d.getDistance()
+                    if (len > 0) drawLine(Color(0xFFFFB300), c, c + d / len * r * 0.9f, 3f)
+                }
+            }
+            Column(Modifier.weight(1f).padding(start = 8.dp)) {
+                ValueBox("Wind from", "%03.0f° %s".format(w.dirDeg, compass(w.dirDeg)))
+                ValueBox("2-min mean / peak gust", "%.0f / %.0f mph".format(w.mean2Min, w.peak2Min))
+                val plc = vm.plc
+                if (plc.profile.type == com.abemu.coaster.sim.ProfileType.LAUNCH && !plc.profile.spec.lsmLift) {
+                    val hw = plc.plant.headwind(plc.profile.launchEnd) / 0.44704
+                    ValueBox("Launch " + if (hw >= 0) "headwind" else "tailwind", "%.0f mph".format(kotlin.math.abs(hw)))
+                    HmiLabel("▬ amber: launch direction. A strong headwind on a weak launch can roll the train back.", 9.sp, color = Hmi.Dim)
+                }
+            }
+        }
+
         // Lightning detector: rings at the hold radius and 20 mi; strikes plotted by distance.
         HmiLabel("LIGHTNING DETECTOR", 10.sp, bold = true, color = Hmi.Dim)
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -157,6 +219,15 @@ private fun WeatherFrame(vm: SimViewModel, instructor: Boolean) {
                 HmiLabel("Inner ring: ${wx.lightningMi.toInt()} mi hold radius · outer ring: 20 mi", 9.sp, color = Hmi.Dim)
             }
         }
+    }
+    HmiFrame("PARK LIGHTING") {
+        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            com.abemu.coaster.Lighting.entries.forEach { l ->
+                HmiButton(l.label, Modifier.weight(1f), active = vm.lighting == l, activeColor = Hmi.Info, fontSize = 10.sp) { vm.lighting = l }
+            }
+        }
+        HmiLabel("Night: the console and HMI dim, lit lamps glow, and the plan view shows the track lighting and train headlights.",
+            10.sp, color = Hmi.Dim)
     }
     HmiFrame("WEATHER (INSTRUCTOR)" + if (!instructor) "  – log in to change" else "") {
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {

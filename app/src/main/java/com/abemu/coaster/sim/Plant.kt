@@ -9,15 +9,23 @@ import kotlin.math.sqrt
 const val G = 9.81
 /** Station / brake-run drive tire transport speed, m/s. */
 const val TIRE_SPEED = 4.0
+/** LSM derate fault: the strongest headwind (m/s, ~22 mph) a derated launch still clears the top hat against. */
+var DERATE_WIND = 10.0
 
-class Train(val id: Int, var s: Double, rows: Int) {
+class Train(val id: Int, var s: Double, rows: Int, val seatsPerRow: Int = 4) {
     var v = 0.0
     /** Metres up the rear spike of a swing launch (0 = on the circuit). While > 0, [s] stays at the junction. */
     var spike = 0.0
     /** Part of the train is on the spike line (behind the junction), so its body stops at the junction. */
     var tailOnSpike = false
-    /** Physical lock state of each restraint row. */
-    val rowLocked = BooleanArray(rows) { true }
+    /** Physical lock state of each seat's restraint, row (car) by row: seat k of row r is [r * seatsPerRow + k]. */
+    val seatLocked = BooleanArray(rows * seatsPerRow) { true }
+    /** Rider in each seat. */
+    val seatTaken = BooleanArray(rows * seatsPerRow) { true }
+    /** Seatbelt buckled (not monitored by the PLC; found by the operator's restraint check). */
+    val beltOn = BooleanArray(rows * seatsPerRow) { true }
+    /** A row's restraint lock switches are wired in series: the row reads locked only when every seat is. */
+    fun rowLocked(r: Int) = (0 until seatsPerRow).all { seatLocked[r * seatsPerRow + it] }
 }
 
 /** Pneumatic brake: spring-applied, air-released (fail-safe closed). */
@@ -39,10 +47,14 @@ class InjectedFaults {
     var liftOverload = false
     var lsmFault = false
     var launchUnderspeed = false
+    /** LSM derated: launches with only a small margin over the top hat, so a strong headwind rolls the train back. */
+    var lsmDerate = false
     var gateStuck = false
     /** Swing-launch switch track jammed where it is. */
     var switchStuck = false
     var restraintRow: Int = -1
+    /** Seat (index into [Train.seatLocked]) whose restraint will not lock, or -1. */
+    var restraintSeat: Int = -1
     val sensorStuckOff = mutableSetOf<Int>()
     val sensorStuckOn = mutableSetOf<Int>()
     /** Station index (see [SafetyController.stations]) whose E-Stop channel B is welded closed, or -1. */
@@ -75,10 +87,17 @@ class Plant(val profile: RideProfile, activeTrains: Int, totalTrains: Int = 3) {
     var restraintUnlockCmd = false
     /** Seconds since the restraints were commanded closed (-1 = not closing), and each row's lock time. */
     private var lockT = -1.0
-    private val lockAt = DoubleArray(profile.rows)
+    /** Restraints were opened at the station; the next gate opening swaps the riders. */
+    private var boarding = false
+    private val lockAt = DoubleArray(profile.rows * profile.spec.ridersPerCar)
     var compressorEnabled = true
     /** Safety output power to brake valves and drive enables (STO). Off = brakes close, drives stop. */
     var safetyPower = true
+
+    // ---- Environment ----
+    /** Wind speed (m/s) and the compass direction it blows from (degrees; plan view up = north). */
+    var windMs = 0.0
+    var windFromDeg = 240.0
 
     // ---- Physical state ----
     var chainSpeed = 0.0
@@ -93,13 +112,19 @@ class Plant(val profile: RideProfile, activeTrains: Int, totalTrains: Int = 3) {
     var launchExitEvent = 0
 
     val liftChainSpeed get() = profile.liftSpeed
-    val launchSpeed get() = if (faults.launchUnderspeed && !profile.spec.lsmLift) profile.rollbackSpeed else profile.launchSpeed
+    val launchSpeed get() = when {
+        profile.spec.lsmLift -> profile.launchSpeed
+        faults.launchUnderspeed -> profile.rollbackSpeed
+        // Derated, the launch only just clears the top hat against a DERATE_WIND headwind; any stronger and it rolls back.
+        faults.lsmDerate -> minOf(profile.launchSpeed, profile.crestSpeedNeeded(DERATE_WIND) + 0.03)
+        else -> profile.launchSpeed
+    }
     /** LSM thrust, m/s². An underspeed fault on an LSM lift leaves too little thrust to hold the incline. */
     private val launchAccel get() = if (faults.launchUnderspeed && profile.spec.lsmLift) 5.0 else 11.0
 
     init {
         val stops = profile.initialStops
-        for (i in 0 until minOf(activeTrains, stops.size)) trains += Train(i + 1, stops[i], profile.rows)
+        for (i in 0 until minOf(activeTrains, stops.size)) trains += Train(i + 1, stops[i], profile.rows, profile.spec.ridersPerCar)
     }
 
     // ---- Sensors ----
@@ -131,7 +156,7 @@ class Plant(val profile: RideProfile, activeTrains: Int, totalTrains: Int = 3) {
     fun rowLockSensor(row: Int): Boolean {
         val t = stationTrain() ?: return false
         if (row == faults.restraintRow) return false
-        return t.rowLocked[row]
+        return t.rowLocked(row)
     }
 
     val gateClosedSensor get() = gatePos < 0.03 && !faults.gateStuck
@@ -190,17 +215,29 @@ class Plant(val profile: RideProfile, activeTrains: Int, totalTrains: Int = 3) {
         else approach(gatePos, if (gatesOpenCmd && airPsi > 50) 1.0 else 0.0, dt / 1.5)
 
         stationTrain()?.let { t ->
-            if (restraintUnlockCmd) { t.rowLocked.fill(false); lockT = -1.0 }
-            else if (t.rowLocked.any { !it }) {
-                // Restraints close: rows lock one after another in a random order, as riders pull them down.
+            if (restraintUnlockCmd) {
+                if (t.seatLocked.any { it }) boarding = true
+                t.seatLocked.fill(false); lockT = -1.0
+            }
+            else if (t.seatLocked.indices.any { !t.seatLocked[it] && it != faults.restraintSeat }) {
+                // Restraints close: seats lock one after another in a random order, as riders pull them down.
                 if (lockT < 0) {
                     var at = 0.2
-                    for (r in t.rowLocked.indices.shuffled()) { at += 0.15 + Math.random() * 0.45; lockAt[r] = at }
+                    val per = 0.15 / t.seatsPerRow
+                    for (r in t.seatLocked.indices.shuffled()) { at += per + Math.random() * 0.45 / t.seatsPerRow; lockAt[r] = at }
                     lockT = 0.0
                 }
                 lockT += dt
-                for (r in t.rowLocked.indices) if (lockT >= lockAt[r]) t.rowLocked[r] = true
+                for (r in t.seatLocked.indices) if (lockT >= lockAt[r] && r != faults.restraintSeat) t.seatLocked[r] = true
             } else lockT = -1.0
+            // Riders get off and on while the gates are open; a few leave their seatbelt undone.
+            if (boarding && gatePos > 0.9) {
+                boarding = false
+                for (k in t.seatTaken.indices) {
+                    t.seatTaken[k] = Math.random() > 0.1
+                    t.beltOn[k] = !t.seatTaken[k] || Math.random() > 0.04
+                }
+            }
         }
     }
 
@@ -211,13 +248,15 @@ class Plant(val profile: RideProfile, activeTrains: Int, totalTrains: Int = 3) {
         val brake = brakes[block.index]
         val sinA = p.slope(t.s).coerceIn(-0.95, 0.95)
         val gravityA = -G * sinA
-        val resist = 0.012 * G + 0.0004 * t.v * t.v
+        // Aerodynamic drag on the airspeed: a headwind adds to it, a tailwind takes away.
+        val air = t.v + if (windMs > 0.3) headwind(t.s) else 0.0
+        val drag = 0.0004 * air * abs(air)
 
         fun freeRoll() {
             if (abs(t.v) < 0.05 && abs(gravityA) <= 0.012 * G) {
                 t.v = 0.0
             } else {
-                t.v += (gravityA - sign(t.v.takeIf { it != 0.0 } ?: gravityA) * resist) * dt
+                t.v += (gravityA - sign(t.v.takeIf { it != 0.0 } ?: gravityA) * 0.012 * G - drag) * dt
             }
         }
 
@@ -325,6 +364,19 @@ class Plant(val profile: RideProfile, activeTrains: Int, totalTrains: Int = 3) {
         }
     }
 
+    /** Headwind (m/s) met by a train running forward at track position [s]: the wind component along the track. */
+    fun headwind(s: Double): Double {
+        val a = profile.planPoint(s - 1.0)
+        val b = profile.planPoint(s + 1.0)
+        val dx = b.first - a.first
+        val dy = b.second - a.second
+        val len = kotlin.math.hypot(dx, dy)
+        if (len < 1e-6) return 0.0
+        // Plan view: +x east, +y south. Wind from bearing θ comes from the direction (sin θ, -cos θ).
+        val th = Math.toRadians(windFromDeg)
+        return windMs * (dx / len * kotlin.math.sin(th) - dy / len * kotlin.math.cos(th))
+    }
+
     /** On the rear spike: negative v climbs; gravity pulls the train back down to the launch track. */
     private fun stepSpike(t: Train, dt: Double) {
         val resist = 0.012 * G + 0.0004 * t.v * t.v
@@ -368,7 +420,7 @@ class Plant(val profile: RideProfile, activeTrains: Int, totalTrains: Int = 3) {
         if (stored <= 0) return false
         val pos = profile.blocks[block].stopPos ?: return false
         val id = (1..9).first { n -> trains.none { it.id == n } }
-        trains += Train(id, pos, profile.rows)
+        trains += Train(id, pos, profile.rows, profile.spec.ridersPerCar)
         stored--
         return true
     }

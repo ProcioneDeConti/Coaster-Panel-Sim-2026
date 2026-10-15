@@ -21,6 +21,7 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
@@ -125,8 +126,13 @@ fun BlockStatusFrame(plc: com.abemu.coaster.sim.RidePlc, modifier: Modifier = Mo
             Row(verticalAlignment = Alignment.CenterVertically) {
                 HmiLabel("${b.tag} ${b.name}", 11.sp, modifier = Modifier.weight(1.6f))
                 Row(Modifier.weight(1.1f), verticalAlignment = Alignment.CenterVertically) {
-                    Indicator(id != -1, Hmi.Bad, Hmi.Ok)
-                    HmiLabel(if (id != -1) " OCCUPIED" else " CLEAR", 11.sp)
+                    val hold = plc.holdT[b.index]
+                    Indicator(id != -1, if (hold > 0) Hmi.Warn else Hmi.Bad, Hmi.Ok)
+                    HmiLabel(when {
+                        hold > 0 -> " HOLD ${hold.toInt()} s"
+                        id != -1 -> " OCCUPIED"
+                        else -> " CLEAR"
+                    }, 11.sp, bold = hold > 0, color = if (hold > 0) Color(0xFF8A5A00) else Hmi.Text)
                 }
                 HmiLabel(if (id != -1) "T$id" + plc.pending[b.index].let { f -> if (f != -1) "+T$f" else "" } else "—", 11.sp, bold = true, modifier = Modifier.weight(0.6f))
                 HmiLabel(
@@ -383,7 +389,8 @@ fun PlanDiagram(
     }
     // Reused across frames so the cached track paths survive; rebuilt on a new ride or size.
     val xfCache = remember(profile) { arrayOfNulls<PlanTransform>(1) }
-    Canvas(modifier.background(Color(0xFF0F1A24)).then(tapMod)) {
+    val night = Night.on
+    Canvas(modifier.background(if (night) Color(0xFF060A0F) else Color(0xFF0F1A24)).then(tapMod)) {
         val xf = xfCache[0]?.takeIf { it.width == size.width && it.height == size.height }
             ?: PlanTransform(profile, size.width, size.height).also { xfCache[0] = it }
         fun pt(s: Double) = xf.pt(s)
@@ -420,6 +427,15 @@ fun PlanDiagram(
         }
         // Rails/centreline
         drawPath(seg(0.0, 0.0), Color(0xFF0F1A24), style = Stroke(1.5f))
+        if (night) {
+            // Track lighting: LED strips along the whole circuit, slowly chasing and shifting colour.
+            val ms = System.currentTimeMillis()
+            val hue = (ms / 60 % 360).toFloat()
+            val full = seg(0.0, 0.0)
+            drawPath(full, Color.hsv(hue, 0.8f, 1f).copy(alpha = 0.18f), style = Stroke(20f, cap = StrokeCap.Round))
+            drawPath(full, Color.hsv((hue + 40) % 360, 0.7f, 1f).copy(alpha = 0.85f),
+                style = Stroke(2.5f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(4f, 10f), -(ms / 25 % 14).toFloat())))
+        }
 
         // Swing launch: spike line behind the switch track, and the switch table itself
         if (profile.planSpike.isNotEmpty()) {
@@ -496,6 +512,11 @@ fun PlanDiagram(
                 val b = head - dir * back
                 moveTo((a + nrm * half).x, (a + nrm * half).y); lineTo((b + nrm * half).x, (b + nrm * half).y)
                 lineTo((b - nrm * half).x, (b - nrm * half).y); lineTo((a - nrm * half).x, (a - nrm * half).y); close()
+            }
+            if (night && t.spike <= 0) {
+                // Headlight: a pool of light ahead of the train.
+                val c0 = head + dir * 26f
+                drawCircle(Brush.radialGradient(listOf(Color(0x99FFF3C4), Color.Transparent), c0, 30f), 30f, c0)
             }
             drawPath(rect(7f, 25f, 10f), ring)
             drawPath(rect(4f, 22f, 7f), c)
