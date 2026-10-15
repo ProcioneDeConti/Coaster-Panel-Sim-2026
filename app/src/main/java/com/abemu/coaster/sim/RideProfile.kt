@@ -147,11 +147,26 @@ class RideProfile(
 
     fun elevationPoints() = elevation
 
+    private val planSorted = plan.zipWithNext().all { (a, b) -> a.first <= b.first }
+
+    /** Last plan anchor at or before [p] (binary search when anchors are ordered, as they normally are). */
+    private fun planIndex(p: Double): Int {
+        if (!planSorted) return plan.indexOfLast { it.first <= p }
+        var lo = 0
+        var hi = plan.size - 1
+        var found = -1
+        while (lo <= hi) {
+            val mid = (lo + hi) ushr 1
+            if (plan[mid].first <= p) { found = mid; lo = mid + 1 } else hi = mid - 1
+        }
+        return found
+    }
+
     /** Top-down position of track point [s] in the 100 x 56 plan box (Catmull-Rom through the anchors). */
     fun planPoint(s: Double): Pair<Double, Double> {
         val p = wrap(s)
         val n = plan.size
-        var i = plan.indexOfLast { it.first <= p }
+        var i = planIndex(p)
         if (i < 0) i = n - 1
         val a = plan[i]
         val b = plan[(i + 1) % n]

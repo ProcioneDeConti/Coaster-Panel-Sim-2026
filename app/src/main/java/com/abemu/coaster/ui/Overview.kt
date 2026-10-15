@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.layout.Column
@@ -303,7 +304,7 @@ fun TrackDiagram(plc: RidePlc, modifier: Modifier = Modifier, ghost: RideProfile
 
 
 /** Maps the 100 x 56 plan box onto a canvas of the given size. */
-class PlanTransform(val profile: com.abemu.coaster.sim.RideProfile, width: Float, height: Float) {
+class PlanTransform(val profile: com.abemu.coaster.sim.RideProfile, val width: Float, val height: Float) {
     private val pad = 28f
     private val scale = minOf((width - pad * 2) / 100f, (height - pad * 2 - 14f) / 56f)
     private val ox = (width - 100f * scale) / 2
@@ -314,8 +315,28 @@ class PlanTransform(val profile: com.abemu.coaster.sim.RideProfile, width: Float
     /** Canvas position of a point in the plan box. */
     fun planPt(p: Pair<Double, Double>): Offset = Offset(ox + p.first.toFloat() * scale, oy + p.second.toFloat() * scale)
 
-    /** Track path between two positions (forward, handling wrap). */
+    private var spike: Path? = null
+
+    /** Spike line from the junction to its tip (cached). */
+    fun spikePath(): Path = spike ?: Path().also { path ->
+        var d = 0.0
+        while (d <= profile.spikeLength) {
+            val p = planPt(profile.spikePlanPoint(d))
+            if (d == 0.0) path.moveTo(p.x, p.y) else path.lineTo(p.x, p.y)
+            d += 2.0
+        }
+        spike = path
+    }
+
+    private val segCache = HashMap<Pair<Double, Double>, Path>()
+
+    /** Track path between two positions (forward, handling wrap). Cached: the track never moves. */
     fun seg(from: Double, to: Double): Path {
+        if (segCache.size > 256) segCache.clear() // editor drags make one-off segments
+        return segCache.getOrPut(from to to) { buildSeg(from, to) }
+    }
+
+    private fun buildSeg(from: Double, to: Double): Path {
         val len = profile.ahead(from, to).let { if (it == 0.0) profile.length else it }
         val path = Path()
         path.moveTo(pt(from).x, pt(from).y)
@@ -360,8 +381,11 @@ fun PlanDiagram(
             if (d < 60f) tap?.invoke(s)
         }
     }
+    // Reused across frames so the cached track paths survive; rebuilt on a new ride or size.
+    val xfCache = remember(profile) { arrayOfNulls<PlanTransform>(1) }
     Canvas(modifier.background(Color(0xFF0F1A24)).then(tapMod)) {
-        val xf = PlanTransform(profile, size.width, size.height)
+        val xf = xfCache[0]?.takeIf { it.width == size.width && it.height == size.height }
+            ?: PlanTransform(profile, size.width, size.height).also { xfCache[0] = it }
         fun pt(s: Double) = xf.pt(s)
         fun seg(from: Double, to: Double) = xf.seg(from, to)
 
@@ -399,13 +423,7 @@ fun PlanDiagram(
 
         // Swing launch: spike line behind the switch track, and the switch table itself
         if (profile.planSpike.isNotEmpty()) {
-            val path = Path()
-            var d = 0.0
-            while (d <= profile.spikeLength) {
-                val p = xf.planPt(profile.spikePlanPoint(d))
-                if (d == 0.0) path.moveTo(p.x, p.y) else path.lineTo(p.x, p.y)
-                d += 2.0
-            }
+            val path = xf.spikePath()
             val onSpike = plant.trains.any { it.spike > 0 || it.tailOnSpike }
             drawPath(path, if (onSpike) Color(0xFFE53935) else Color(0xFF546E7A), style = Stroke(7f, cap = StrokeCap.Butt))
             val tip = xf.planPt(profile.spikePlanPoint(profile.spikeLength))

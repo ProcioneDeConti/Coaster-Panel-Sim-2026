@@ -89,12 +89,12 @@ private val clockFmt = DateTimeFormatter.ofPattern("HH:mm:ss")
 fun HmiTerminal(vm: SimViewModel, modifier: Modifier = Modifier) {
     var page by rememberSaveable { mutableStateOf(HmiPage.OVERVIEW) }
     var showLogin by remember { mutableStateOf(false) }
-    vm.frame.longValue
-    val plc = vm.plc
+    // No frame read here: the pages and banners below read it themselves, so the bezel and
+    // function keys don't recompose on every sim tick.
 
     Column(
         modifier
-            .background(Brush.verticalGradient(listOf(Color(0xFFD3D7DB), Color(0xFFB9BEC3))))
+            .background(BezelBrush)
             .padding(10.dp),
     ) {
         Row(Modifier.padding(bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -142,6 +142,7 @@ fun HmiTerminal(vm: SimViewModel, modifier: Modifier = Modifier) {
 }
 
 private val BrandBlue = Color(0xFF1F5AA8)
+private val BezelBrush = Brush.verticalGradient(listOf(Color(0xFFD3D7DB), Color(0xFFB9BEC3)))
 
 /** PanelView-style nameplate: blue-outlined strip, oval logo, brand name, and model in a pill on a blue band. */
 @Composable
@@ -302,9 +303,7 @@ private fun FunctionKey(key: String, label: String, selected: Boolean, modifier:
     Column(
         modifier
             .background(
-                Brush.verticalGradient(
-                    if (selected) listOf(Color(0xFF4F8AD6), Color(0xFF2A5C9E)) else listOf(Color(0xFF5B6168), Color(0xFF3A3F45)),
-                ),
+                if (selected) KeySelected else KeyIdle,
                 RoundedCornerShape(5.dp),
             )
             .border(1.dp, Color.Black, RoundedCornerShape(5.dp))
@@ -318,6 +317,13 @@ private fun FunctionKey(key: String, label: String, selected: Boolean, modifier:
 }
 
 // ---------------------------------------------------------------- shared HMI widgets
+
+// Shared button fills, built once rather than on every recomposition.
+private val KeySelected = Brush.verticalGradient(listOf(Color(0xFF4F8AD6), Color(0xFF2A5C9E)))
+private val KeyIdle = Brush.verticalGradient(listOf(Color(0xFF5B6168), Color(0xFF3A3F45)))
+private val BtnDisabled = Brush.verticalGradient(listOf(Color(0xFFCCCCCC), Color(0xFFB8B8B8)))
+private val BtnIdle = Brush.verticalGradient(listOf(Color(0xFFF2F2F2), Color(0xFFC2C6CA)))
+private val BtnHeld = Brush.verticalGradient(listOf(Hmi.Warn, Color(0xFFC08800)))
 
 @Composable
 fun HmiButton(
@@ -335,9 +341,9 @@ fun HmiButton(
         modifier
             .background(
                 when {
-                    !enabled -> Brush.verticalGradient(listOf(Color(0xFFCCCCCC), Color(0xFFB8B8B8)))
+                    !enabled -> BtnDisabled
                     active -> Brush.verticalGradient(listOf(activeColor.copy(alpha = 0.85f), activeColor))
-                    else -> Brush.verticalGradient(listOf(Color(0xFFF2F2F2), Color(0xFFC2C6CA)))
+                    else -> BtnIdle
                 },
                 RoundedCornerShape(4.dp),
             )
@@ -363,9 +369,9 @@ fun HmiHoldButton(text: String, modifier: Modifier = Modifier, enabled: Boolean 
     Box(
         modifier
             .background(
-                if (held) Brush.verticalGradient(listOf(Hmi.Warn, Color(0xFFC08800)))
-                else if (enabled) Brush.verticalGradient(listOf(Color(0xFFF2F2F2), Color(0xFFC2C6CA)))
-                else Brush.verticalGradient(listOf(Color(0xFFCCCCCC), Color(0xFFB8B8B8))),
+                if (held) BtnHeld
+                else if (enabled) BtnIdle
+                else BtnDisabled,
                 RoundedCornerShape(4.dp),
             )
             .border(1.dp, Color(0xFF6A7178), RoundedCornerShape(4.dp))

@@ -251,6 +251,7 @@ fun AlarmsPage(vm: SimViewModel) {
     val plc = vm.plc
     var showHistory by remember { mutableStateOf(false) }
     var selected by remember { mutableStateOf<Pair<String, String>?>(null) } // code to text
+    val hist = remember(plc, plc.alarms.historyVersion) { plc.alarms.history.toList() }
     Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
             HmiButton("ACTIVE (${plc.alarms.active.size})", active = !showHistory, activeColor = Hmi.Info) { showHistory = false }
@@ -266,7 +267,7 @@ fun AlarmsPage(vm: SimViewModel) {
         }
         LazyColumn(Modifier.weight(1f).fillMaxWidth().background(Color.White).border(1.dp, Color(0xFF8C939A))) {
             if (showHistory) {
-                items(plc.alarms.history.toList()) { e ->
+                items(hist) { e ->
                     AlarmRow(e.time, e.severity.label, sevColor(e.severity), e.event, e.text, selected?.first == e.code && selected?.second == e.text) { selected = e.code to e.text }
                 }
             } else {

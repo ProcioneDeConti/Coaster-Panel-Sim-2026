@@ -42,7 +42,7 @@ class TrendRecorder(val period: Double = 0.5) {
         for (i in 0 until 3) trainSpeed[i].add(p.trains.firstOrNull { it.id == i + 1 }?.let { abs(it.v).toFloat() } ?: 0f)
         drive.add(
             if (prof.type == ProfileType.LIFT) p.chainSpeed.toFloat()
-            else p.trains.filter { prof.blockAt(it.s).kind == BlockKind.LAUNCH }.maxOfOrNull { abs(it.v) }?.toFloat() ?: 0f,
+            else p.trains.maxOfOrNull { if (prof.blockAt(it.s).kind == BlockKind.LAUNCH) abs(it.v) else 0.0 }?.toFloat() ?: 0f,
         )
         air.add(p.airPsi.toFloat())
         liftCurrent.add(liftMotorAmps(plc).toFloat())

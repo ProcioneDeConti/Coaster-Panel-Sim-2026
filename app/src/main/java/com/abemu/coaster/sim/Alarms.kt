@@ -20,6 +20,8 @@ class AlarmManager {
     private val fmt = DateTimeFormatter.ofPattern("HH:mm:ss")
     private val alarms = LinkedHashMap<String, Alarm>()
     val history = ArrayDeque<AlarmEvent>()
+    /** Bumped on every history change, so the UI only copies the list when it changed. */
+    var historyVersion = 0L; private set
 
     /** Code of the first stop-level alarm in the current fault sequence ("first out"). */
     private var firstOutCode: String? = null
@@ -29,6 +31,7 @@ class AlarmManager {
     private fun now() = LocalTime.now().format(fmt)
 
     private fun log(a: Alarm, event: String) {
+        historyVersion++
         history.addFirst(AlarmEvent(now(), a.code, a.text, a.severity, event))
         while (history.size > 300) history.removeLast()
     }
@@ -56,6 +59,7 @@ class AlarmManager {
     }
 
     fun info(code: String, text: String) {
+        historyVersion++
         history.addFirst(AlarmEvent(now(), code, text, Severity.INFO, "EVENT"))
     }
 
