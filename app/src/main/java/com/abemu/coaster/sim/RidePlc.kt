@@ -77,6 +77,13 @@ class RidePlc(val plant: Plant) {
     private val prevSensor = BooleanArray(n)
     val releaseLatch = BooleanArray(n)
     private val latchedTrain = IntArray(n) { -1 }
+    /** Seconds a release has had its brake open without the train reaching the next block (missed-arrival watchdog). */
+    private val releaseT = DoubleArray(n)
+    /** The latched train has run past its block's stop point (watchdog armed). */
+    private val passedStop = BooleanArray(n)
+    /** Train last seen on the lift crest prox, and seconds since it left the crest without entering the next block. */
+    private var crestTrain = -1
+    private var crestLeftT = 0.0
     val maintBrakeOpen = BooleanArray(n)
     private val brakeMismatchT = DoubleArray(n)
     private val stallT = DoubleArray(n)
@@ -287,9 +294,12 @@ class RidePlc(val plant: Plant) {
     val eStopped get() = state == RideState.ESTOP
     fun next(i: Int) = (i + 1) % n
     fun nextClear(i: Int) = occ[next(i)] == -1 && !entry(next(i))
-    /** No train out on the course: the block is empty, or its train is stopped at the block brake ready to advance. */
-    private fun courseClear() = !entry(courseBlock) &&
-        (occ[courseBlock] == -1 || plant.trainAtStop(courseBlock)?.let { it.id == occ[courseBlock] && abs(it.v) < 0.05 } == true)
+    /**
+     * No train out on the course: the block is empty, its train is stopped at the block brake ready to advance, or
+     * it is already leaving (nose into unload, only its tail still on the brakes).
+     */
+    private fun courseClear() = !entry(courseBlock) && (occ[courseBlock] == -1 || leaving[courseBlock] ||
+        plant.trainAtStop(courseBlock)?.let { it.id == occ[courseBlock] && abs(it.v) < 0.05 } == true)
     /** Lift clear and no train on the course: a held dispatch may go, and the trains behind follow it in (moving-block stations). */
     private fun trackClear() = nextClear(0) && courseClear()
     private val holdBlocks get() = profile.blocks[1].let { "${it.tag} ${it.name} clear" } + " and " + profile.blocks[courseBlock].let { "${it.tag} train on the brakes" }
@@ -465,7 +475,8 @@ class RidePlc(val plant: Plant) {
             }
             // Stall / valley detection via block speed sensors.
             val id = occ[b]
-            val stalled = id != -1 && abs(trainSpeed(id)) < 0.05 && plant.trainAtStop(b)?.id != id &&
+            // A train still leaving (nose already in the next block, tail on this one's entry prox) isn't stalled here.
+            val stalled = id != -1 && !leaving[b] && abs(trainSpeed(id)) < 0.05 && plant.trainAtStop(b)?.id != id &&
                 blk.kind != BlockKind.LIFT && blk.kind != BlockKind.LAUNCH && state != RideState.ESTOP
             stallT[b] = if (stalled) stallT[b] + dt else 0.0
             alarms.condition("STALL$b", "${blk.tag} train not at expected position – possible valley/stall",
@@ -664,6 +675,18 @@ class RidePlc(val plant: Plant) {
             if (plant.trainAtStop(b)?.id == occ[b] || occ[b] == -1) releaseLatch[b] = false
         }
         val autoRelease = state == RideState.RUNNING || state == RideState.CSTOP
+        // Moving-block follow-in: if the train ahead is stopped while still in the zone (lift fault, C-stop, recovery),
+        // stop the drive tires under the follower so it can't run up on the leader's tail.
+        val followHold = BooleanArray(n)
+        if (movingBlock) for (b in 0 until n) {
+            if (!stationZone(b) || occ[b] == -1) continue
+            val p = (b - 1 + n) % n
+            val follower = pending[b].takeIf { it != -1 } ?: occ[p].takeIf { it != -1 && leaving[p] } ?: continue
+            if (follower == occ[b]) continue
+            // Once the leader is released it pulls away on the same tires and the follower trails it at the same speed.
+            val leaderStopped = abs(trainSpeed(occ[b])) < 0.2 && !(releaseLatch[b] && latchedTrain[b] == occ[b])
+            if (leaderStopped) { followHold[b] = true; followHold[p] = true }
+        }
         if (m != KeyMode.MAINT) maintBrakeOpen.fill(false)
 
         for (b in 0 until n) {
@@ -675,7 +698,43 @@ class RidePlc(val plant: Plant) {
                 else -> (releaseLatch[b] && autoRelease) || manualOpen[b]
             } || (maint && maintBrakeOpen[b])
             plant.brakes[b].cmdOpen = open && !eStopped && !(b == profile.transferBlock && transferState != TransferState.IDLE)
-            plant.tiresCmd[b] = !eStopped
+            plant.tiresCmd[b] = !eStopped && !followHold[b]
+        }
+
+        // Missed-arrival watchdog: a released train that never trips the next entry prox means tracking can't be
+        // trusted (failed sensor), and the release would wave the following train through. Stop the ride.
+        for (b in 0 until n) {
+            val stop = profile.blocks[b].stopPos
+            val tr = plant.trains.firstOrNull { it.id == latchedTrain[b] }
+            if (releaseLatch[b] && stop != null && tr != null && profile.ahead(stop, tr.s) in 1.5..20.0) passedStop[b] = true
+            val counting = releaseLatch[b] && passedStop[b] && plant.brakes[b].cmdOpen && running && occ[b] == latchedTrain[b]
+            releaseT[b] = if (counting) releaseT[b] + dt else 0.0
+            if (releaseT[b] > arrivalLimit(b)) {
+                val nb = profile.blocks[next(b)]
+                alarms.raise("NOARR$b", "${nb.tag} entry prox not made – train ${latchedTrain[b]} released from ${profile.blocks[b].tag} " +
+                    "failed to arrive (check ${nb.tag}_PX_ENTRY)", Severity.CSTOP)
+                releaseLatch[b] = false
+                releaseT[b] = 0.0
+            }
+        }
+
+        // Same watchdog over the lift crest: the train left the crest prox but the next block never saw it arrive.
+        if (profile.type == ProfileType.LIFT) {
+            val lb = profile.blocks.indexOfFirst { it.kind == BlockKind.LIFT }
+            if (lb >= 0) {
+                val nb = next(lb)
+                if (crestPx) { crestTrain = occ[lb]; crestLeftT = 0.0 }
+                else if (crestTrain != -1 && (occ[nb] == crestTrain || pending[nb] == crestTrain || occ[lb] != crestTrain)) crestTrain = -1
+                else if (crestTrain != -1 && running) {
+                    crestLeftT += dt
+                    if (crestLeftT > 8.0) {
+                        val b = profile.blocks[nb]
+                        alarms.raise("NOARR$lb", "${b.tag} entry prox not made – train $crestTrain left the lift crest " +
+                            "but never arrived (check ${b.tag}_PX_ENTRY)", Severity.CSTOP)
+                        crestTrain = -1
+                    }
+                }
+            }
         }
 
         // ---------- Lift ----------
@@ -865,6 +924,15 @@ class RidePlc(val plant: Plant) {
     private fun latch(b: Int) {
         releaseLatch[b] = true
         latchedTrain[b] = occ[b]
+        releaseT[b] = 0.0
+        passedStop[b] = false
+    }
+
+    /** Time a released train needs from its stop to the next block's entry prox, with margin for a slow start. */
+    private fun arrivalLimit(b: Int): Double {
+        val blk = profile.blocks[b]
+        val dist = profile.ahead((blk.stopPos ?: blk.end) + 1.5, profile.blocks[next(b)].start)
+        return dist / (TIRE_SPEED * 0.5) + 4.0
     }
 
     private fun onEntry(b: Int) {
@@ -912,6 +980,16 @@ class RidePlc(val plant: Plant) {
                 // Two trains in one moving-block station zone: the one further along owns it, the other follows.
                 profile.ahead(blk.start, tr.s) > profile.ahead(blk.start, other.s) -> { pending[b] = other.id; occ[b] = tr.id }
                 else -> pending[b] = tr.id
+            }
+        }
+        // A train whose tail hasn't cleared its block's entry prox still holds the block behind, as live tracking does.
+        for (tr in plant.trains) {
+            val b = profile.blockAt(tr.s).index
+            val p = (b - 1 + n) % n
+            if (profile.ahead(profile.blocks[b].start, tr.s) < profile.trainLength) {
+                // A train behind it in that block (moving-block zone) follows it in.
+                if (occ[p] != -1 && occ[p] != tr.id && pending[p] == -1) pending[p] = occ[p]
+                if (occ[p] == -1 || pending[p] != -1) { occ[p] = tr.id; leaving[p] = true }
             }
         }
         for (b in 0 until n) prevSensor[b] = entry(b)

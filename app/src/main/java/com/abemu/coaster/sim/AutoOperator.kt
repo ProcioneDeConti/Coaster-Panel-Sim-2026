@@ -34,6 +34,8 @@ class AutoOperator(seed: Int = Random.nextInt()) {
     private var jogBlock = -1
     private var jogTrain = -1
     private var pushed = false
+    /** Where the jogged train started, so "done" means it actually moved rather than just sitting across a boundary. */
+    private var jogStartS = 0.0
     private var nextFaultIn = 300.0
     private val releases = mutableListOf<Pair<Double, () -> Unit>>()
     private var plcRef: RidePlc? = null
@@ -59,7 +61,8 @@ class AutoOperator(seed: Int = Random.nextInt()) {
         // Anything that stops the ride, or a station cycle that has stalled, brings maintenance out.
         val faulted = plc.state == RideState.ESTOP || plc.state == RideState.CSTOP ||
             plc.alarms.active.any { it.severity.ordinal <= Severity.CSTOP.ordinal }
-        val stalled = !plc.weather.hold && (phase in STATION && phaseT > 45 || phase == Phase.DISPATCH && phaseT > 180)
+        val stalled = !plc.weather.hold && (phase in STATION && phaseT > 45 || phase == Phase.DISPATCH && phaseT > 180 ||
+            phase == Phase.WAIT && plc.dispatchArmed && phaseT > 300)
         if (phase !in MAINT && (faulted || stalled)) {
             lastFault = plc.alarms.firstOut?.text ?: plc.alarms.active.firstOrNull()?.text ?: "${phase.label} stalled"
             go(Phase.MAINT_CALLED)
@@ -84,7 +87,7 @@ class AutoOperator(seed: Int = Random.nextInt()) {
             Phase.WAIT -> when {
                 plc.state != RideState.RUNNING && plc.state != RideState.STARTING -> go(Phase.START)
                 plc.relaunchHold && !plc.relaunchArmed -> if (phaseT > 3) { plc.authorizeRelaunch(); phaseT = 0.0 }
-                plc.dispatchArmed -> phaseT = 0.0 // held for the course block; the train leaves on its own
+                plc.dispatchArmed -> Unit // held for the course block; the train leaves on its own
                 plc.trainInStation && !plc.releaseLatch[0] && phaseT > 1.5 -> { press { i.restraintOpen = it }; go(Phase.UNLOAD) }
             }
             Phase.UNLOAD -> if (phaseT > 3) { press { i.gatesOpen = it }; go(Phase.BOARD) }
@@ -118,6 +121,7 @@ class AutoOperator(seed: Int = Random.nextInt()) {
                 phaseT < 1 -> Unit
                 stalledBlock(plc) >= 0 -> {
                     jogBlock = stalledBlock(plc); jogTrain = plc.occ[jogBlock]; pushed = false
+                    jogStartS = plc.plant.trains.firstOrNull { it.id == jogTrain }?.s ?: 0.0
                     i.mode = KeyMode.MANUAL
                     go(Phase.JOG)
                 }
@@ -130,8 +134,9 @@ class AutoOperator(seed: Int = Random.nextInt()) {
                 // carried into the next block, or over the lift if that is where it went.
                 val tr = plc.plant.trains.firstOrNull { it.id == jogTrain }
                 val at = tr?.let { plc.profile.blockAt(it.s) }
-                val done = tr == null || at!!.index != jogBlock && at.kind != BlockKind.LIFT ||
-                    pushed && plc.plant.trainAtStop(jogBlock)?.id == tr.id
+                val moved = tr != null && plc.profile.ahead(jogStartS, tr.s) in 3.0..(plc.profile.length - 3.0)
+                val done = tr == null || moved && at!!.index != jogBlock && at.kind != BlockKind.LIFT ||
+                    pushed && plc.plant.trainAtStop(at!!.index)?.id == tr.id
                 if (plc.state == RideState.STOPPED && !done && phaseT < 120) {
                     // Re-secure the train first (low air drops the restraint locks); station release needs it.
                     if (phaseT < 1 && phaseT + dt >= 1) { press { i.gatesClose = it }; press { i.restraintClose = it } }
@@ -141,10 +146,12 @@ class AutoOperator(seed: Int = Random.nextInt()) {
                     i.liftJog = phaseT > 3
                     // Off the drive tires and short of the next device: the crew winches it back onto the block's stop
                     // (or pushes it on by hand where there is no stop) so the ride can carry on from there.
-                    if (phaseT > 15 && tr != null && kotlin.math.abs(tr.v) < 0.05 && at!!.index == jogBlock && !pushed) {
+                    // Use the block the train is physically in: one stopped across a boundary belongs to the block ahead.
+                    if (phaseT > 15 && tr != null && kotlin.math.abs(tr.v) < 0.05 && !moved && !pushed) {
                         pushed = true
-                        val stop = plc.profile.blocks[jogBlock].stopPos
-                        if (stop != null) { tr.s = stop; tr.v = 0.0; plc.alarms.info("MNT", "Maintenance winched train ${tr.id} back to the ${plc.profile.blocks[jogBlock].tag} stop") }
+                        val blk = at!!
+                        val stop = blk.stopPos
+                        if (stop != null) { tr.s = stop; tr.v = 0.0; plc.alarms.info("MNT", "Maintenance winched train ${tr.id} to the ${blk.tag} stop") }
                         else { tr.v = 1.2; plc.alarms.info("MNT", "Maintenance pushing train ${tr.id} by hand") }
                     }
                 } else if (plc.state != RideState.STOPPED && phaseT < 10) {

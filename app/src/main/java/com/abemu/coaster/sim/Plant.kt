@@ -304,6 +304,7 @@ class Plant(val profile: RideProfile, activeTrains: Int, totalTrains: Int = 3) {
                         toStop <= 0.05 -> t.v = max(0.0, t.v - 10.0 * dt)
                         t.v > target -> t.v = max(target, t.v - 9.0 * dt)
                         tires && t.v < tireTarget -> t.v = min(tireTarget, t.v + 1.5 * dt)
+                        !tires -> t.v = max(0.0, t.v - 3.0 * dt) // stopped tires clamp the train
                     }
                     if (t.v < 0) t.v = 0.0
                 } else {
@@ -314,6 +315,8 @@ class Plant(val profile: RideProfile, activeTrains: Int, totalTrains: Int = 3) {
                             t.v = min(block.exitLaunch, t.v + 11.0 * dt)
                         t.v > trim -> t.v = max(trim, t.v - 4.0 * dt)
                         tires && t.v < TIRE_SPEED -> t.v = min(TIRE_SPEED, t.v + 1.5 * dt)
+                        // Stopped drive tires clamp the train: it pulls up in the tire section.
+                        !tires && t.v <= TIRE_SPEED + 0.5 -> t.v = max(0.0, t.v - 3.0 * dt)
                         else -> freeRoll()
                     }
                 }
