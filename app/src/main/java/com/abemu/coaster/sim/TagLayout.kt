@@ -57,7 +57,7 @@ object TagLayout {
                 // A tag over a kept brake (final or tunnel) just renames it.
                 p.blocks.subList(finalIdx, p.blocks.size).plus(listOfNotNull(tunnel)).any { p.inRange(a + len / 2, it.start, it.end) } -> null
                 !inCourse(a, b) -> { say(t, "skipped, outside the free-running course"); null }
-                len < p.trainLength + 10 -> { say(t, "rejected, %.0f m is shorter than a train + 10 m".format(len)); null }
+                len < p.trainLength + 10 -> { say(t, "rejected, %.0f ft is shorter than a train + 33 ft".format(Units.ft(len))); null }
                 else -> Cand(t, a, b)
             }
         }.sortedBy { it.start }
@@ -157,7 +157,7 @@ object TagLayout {
             val vMin = kotlin.math.sqrt(2 * G * maxOf(0.0, need - heightAt(b)))
             val vMax = maxOf(vMin, 8.0)
             trims += Trim(t.name.ifEmpty { "Trim ${trims.size + 1}" }, a, b, vMax)
-            say(t, "trims to %.1f m/s".format(vMax), ok = true)
+            say(t, "trims to %.1f mph".format(Units.mph(vMax)), ok = true)
         }
 
         // ---- Prox sensors: extra field inputs at the tagged points ----

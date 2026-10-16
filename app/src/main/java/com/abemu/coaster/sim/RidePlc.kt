@@ -745,7 +745,7 @@ class RidePlc(val plant: Plant) {
                 launchState = LaunchState.VERIFY; launchT = 0.0
                 val v = plant.lastLaunchExitSpeed
                 val min = profile.launchSpeed * 0.92
-                if (v < min) alarms.raise("LSM_SPD", "Launch exit speed low: ${"%.1f".format(v)} m/s (min ${"%.1f".format(min)})", Severity.WARNING)
+                if (v < min) alarms.raise("LSM_SPD", "Launch exit speed low: ${"%.0f".format(Units.mph(v))} mph (min ${"%.0f".format(Units.mph(min))})", Severity.WARNING)
             }
             LaunchState.VERIFY -> when {
                 occ[next(1)] == launchTrain -> launchState = LaunchState.IDLE

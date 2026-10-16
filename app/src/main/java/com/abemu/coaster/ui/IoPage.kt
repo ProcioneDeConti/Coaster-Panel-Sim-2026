@@ -1,5 +1,7 @@
 package com.abemu.coaster.ui
 
+import com.abemu.coaster.sim.Units
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -215,7 +217,7 @@ private fun ModuleDetail(vm: SimViewModel, plc: RidePlc, m: IoModule) {
                 val p = plc.plant
                 ValueBox("Ch0 Main air (psi)", "%.1f".format(p.airPsi))
                 if (plc.profile.type == ProfileType.LIFT) ValueBox("Ch1 Lift speed (m/s)", "%.2f".format(p.chainSpeed))
-                p.trains.forEach { t -> ValueBox("Train ${t.id} speed / pos", "%5.1f / %5.0f m".format(abs(t.v), t.s)) }
+                p.trains.forEach { t -> ValueBox("Train ${t.id} speed / pos", "%5.1f mph / %5.0f ft".format(Units.mph(abs(t.v)), Units.ft(t.s))) }
             }
             else -> {
                 if (safetyModule(m)) HmiLabel("Safety I/O – read only. Safety tags cannot be forced while the safety task is locked.", 10.sp, color = Hmi.Dim)

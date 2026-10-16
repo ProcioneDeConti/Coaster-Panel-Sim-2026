@@ -1,5 +1,7 @@
 package com.abemu.coaster.ui
 
+import com.abemu.coaster.sim.Units
+
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -143,10 +145,10 @@ fun BuilderPage(vm: SimViewModel, onClose: () -> Unit) {
                         HmiButton(t.label.uppercase(), active = d.type == t, activeColor = Hmi.Info) { draft = d.copy(type = t) }
                     }
                 }
-                Stepper(if (d.type == ProfileType.LIFT) "Lift height" else "Top hat height", "${d.heightM} m (${(d.heightM * 3.281).roundToInt()} ft)",
+                Stepper(if (d.type == ProfileType.LIFT) "Lift height" else "Top hat height", "${(d.heightM * Units.FT).roundToInt()} ft",
                     { draft = d.copy(heightM = (d.heightM - 5).coerceAtLeast(10)) }, { draft = d.copy(heightM = (d.heightM + 5).coerceAtMost(140)) })
-                if (d.type == ProfileType.LIFT) Stepper("Lift speed", "%.1f m/s".format(d.liftSpeed),
-                    { draft = d.copy(liftSpeed = (d.liftSpeed - 0.5).coerceAtLeast(2.0)) }, { draft = d.copy(liftSpeed = (d.liftSpeed + 0.5).coerceAtMost(8.0)) })
+                if (d.type == ProfileType.LIFT) Stepper("Lift speed", "%.0f mph".format(Units.mph(d.liftSpeed)),
+                    { draft = d.copy(liftSpeed = (d.liftSpeed - 1 / Units.MPH).coerceAtLeast(4 / Units.MPH)) }, { draft = d.copy(liftSpeed = (d.liftSpeed + 1 / Units.MPH).coerceAtMost(20 / Units.MPH)) })
                 else Stepper("Launch speed", "${d.launchMph} mph",
                     { draft = d.copy(launchMph = (d.launchMph - 5).coerceAtLeast(30)) }, { draft = d.copy(launchMph = (d.launchMph + 5).coerceAtMost(130)) })
                 Stepper("Cars per train", "${d.cars}", { draft = d.copy(cars = (d.cars - 1).coerceAtLeast(2)) }, { draft = d.copy(cars = (d.cars + 1).coerceAtMost(10)) })
@@ -215,7 +217,7 @@ private fun SavedRides(vm: SimViewModel, refresh: Int, onDelete: (String) -> Uni
         if (CustomRides.rides.isEmpty()) HmiLabel("None yet.", 11.sp, color = Hmi.Dim)
         CustomRides.rides.toList().forEach { r ->
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                HmiLabel("${r.spec.name} · ${r.spec.type.label} · ${r.layout.osmLengthM.roundToInt()} m", 11.sp, modifier = Modifier.weight(1f))
+                HmiLabel("${r.spec.name} · ${r.spec.type.label} · ${Units.ft(r.layout.osmLengthM).roundToInt()} ft", 11.sp, modifier = Modifier.weight(1f))
                 val loaded = vm.coasterId == r.spec.id
                 HmiButton(if (loaded) "IN USE" else "DELETE", enabled = !loaded, activeColor = Hmi.Bad) { onDelete(r.spec.id) }
             }

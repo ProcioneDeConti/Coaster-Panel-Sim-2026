@@ -1,5 +1,7 @@
 package com.abemu.coaster.ui
 
+import com.abemu.coaster.sim.Units
+
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -97,10 +99,10 @@ fun OverviewPage(vm: SimViewModel) {
             BlockStatusFrame(plc, Modifier.weight(1.6f))
             HmiFrame("RIDE DATA", Modifier.weight(1f)) {
                 if (plc.profile.type == ProfileType.LIFT) {
-                    ValueBox("Lift chain", "%.2f m/s".format(plc.plant.chainSpeed))
+                    ValueBox("Lift chain", "%.1f ft/s".format(Units.fps(plc.plant.chainSpeed)))
                 } else {
                     ValueBox("LSM state", plc.launchState.label)
-                    ValueBox("Last exit spd", "%.1f m/s".format(plc.plant.lastLaunchExitSpeed))
+                    ValueBox("Last exit spd", "%.1f mph".format(Units.mph(plc.plant.lastLaunchExitSpeed)))
                 }
                 ValueBox("Main air", "${plc.plant.airPsi.toInt()} psi")
                 ValueBox("Trains (circuit/stor)", "${plc.plant.trains.size} / ${plc.plant.stored}")
@@ -144,7 +146,7 @@ fun BlockStatusFrame(plc: com.abemu.coaster.sim.RidePlc, modifier: Modifier = Mo
                     },
                     11.sp, color = if (brk.isOpen) Hmi.Ok else Hmi.Text, modifier = Modifier.weight(0.9f),
                 )
-                HmiLabel(if (id != -1) "%.1f m/s".format(abs(plc.trainSpeed(id))) else "", 11.sp, modifier = Modifier.weight(0.8f))
+                HmiLabel(if (id != -1) "%.1f mph".format(Units.mph(abs(plc.trainSpeed(id)))) else "", 11.sp, modifier = Modifier.weight(0.8f))
             }
         }
     }
@@ -169,10 +171,10 @@ fun TrackDiagram(plc: RidePlc, modifier: Modifier = Modifier, ghost: RideProfile
         fun pt(s: Double) = Offset(x(s), y(s))
 
         // Grid
-        for (h in 0..maxH.toInt() step 10) {
-            val yy = (bottom - h / maxH * (bottom - top)).toFloat()
+        for (h in 0..Units.ft(maxH).toInt() step 50) {
+            val yy = (bottom - h / Units.FT / maxH * (bottom - top)).toFloat()
             drawLine(Color(0xFF1E2E3D), Offset(padL, yy), Offset(size.width - padR, yy))
-            drawText(tm, "${h}m", Offset(2f, yy - 14f), TextStyle(color = Color(0xFF4F6578), fontSize = 9.sp))
+            drawText(tm, "${h}ft", Offset(2f, yy - 14f), TextStyle(color = Color(0xFF4F6578), fontSize = 9.sp))
         }
 
         // Block bands along the bottom

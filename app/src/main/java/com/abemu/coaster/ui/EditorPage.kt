@@ -1,5 +1,7 @@
 package com.abemu.coaster.ui
 
+import com.abemu.coaster.sim.Units
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -140,9 +142,9 @@ fun EditorPage(vm: SimViewModel, onClose: () -> Unit) {
                 HmiLabel(msg, 11.sp, color = Hmi.Info)
                 val sa = a
                 val sb = b
-                ValueBox("Start", sa?.let { "%.1f m".format(it) } ?: "—")
-                ValueBox("End", sb?.let { "%.1f m".format(it) } ?: "—")
-                ValueBox("Length", if (sa != null && sb != null) "%.1f m".format(profile.ahead(sa, sb)) else "—")
+                ValueBox("Start", sa?.let { "%.0f ft".format(Units.ft(it)) } ?: "—")
+                ValueBox("End", sb?.let { "%.0f ft".format(Units.ft(it)) } ?: "—")
+                ValueBox("Length", if (sa != null && sb != null) "%.0f ft".format(Units.ft(profile.ahead(sa, sb))) else "—")
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     HmiButton("CLEAR SELECTION", Modifier.weight(1f)) { a = null; b = null; msg = "Tap the track to place the start point." }
                     HmiButton("CLOSE EDITOR", Modifier.weight(1f)) { onClose() }
@@ -173,14 +175,14 @@ fun EditorPage(vm: SimViewModel, onClose: () -> Unit) {
                     EditField(name, { name = it }, Modifier.weight(1f))
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    HmiLabel("Height m", 11.sp, modifier = Modifier.width(60.dp))
+                    HmiLabel("Height ft", 11.sp, modifier = Modifier.width(60.dp))
                     EditField(height, { height = it.filter { c -> c.isDigit() || c == '.' } }, Modifier.weight(1f), numeric = true)
                 }
                 val ready = a != null && (type.point || b != null)
                 HmiButton("ADD TAG", Modifier.fillMaxWidth(), enabled = ready, active = ready, activeColor = Hmi.Ok) {
                     val sa = a ?: return@HmiButton
                     val sb = if (type.point) sa else b ?: return@HmiButton
-                    tags += TrackTag.create(profile, type, sa, sb, name, height.toDoubleOrNull())
+                    tags += TrackTag.create(profile, type, sa, sb, name, height.toDoubleOrNull()?.div(Units.FT))
                     persist()
                     msg = "Added ${type.label}${if (name.isNotBlank()) " \"$name\"" else ""}."
                     a = null; b = null; name = ""; height = ""
@@ -194,7 +196,7 @@ fun EditorPage(vm: SimViewModel, onClose: () -> Unit) {
                         if (t.toLayout() in vm.tagRejected) HmiLabel(" ✕", 11.sp, color = Hmi.Bad)
                         HmiLabel(
                             "  ${t.type.label}${if (t.name.isNotEmpty()) " – ${t.name}" else ""}  " +
-                                if (t.type.point) "@ %.0f m".format(t.sStart) else "%.0f–%.0f m (%.0f m)".format(t.sStart, t.sEnd, t.lengthM(profile)) +
+                                if (t.type.point) "@ %.0f ft".format(Units.ft(t.sStart)) else "%.0f–%.0f ft (%.0f ft)".format(Units.ft(t.sStart), Units.ft(t.sEnd), Units.ft(t.lengthM(profile))) +
                                     (t.heightM?.let { " · ${it} m high" } ?: ""),
                             10.sp, modifier = Modifier.weight(1f),
                         )

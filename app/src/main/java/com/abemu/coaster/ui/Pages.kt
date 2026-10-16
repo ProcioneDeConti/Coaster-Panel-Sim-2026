@@ -1,5 +1,7 @@
 package com.abemu.coaster.ui
 
+import com.abemu.coaster.sim.Units
+
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -827,8 +829,8 @@ private fun CoasterPicker(vm: SimViewModel, enabled: Boolean) {
         append(p.name)
         p.spec.park?.let { append(" – $it") }
         append(" · ${p.type.label}")
-        if (p.type == ProfileType.LIFT) append(" · lift ${p.spec.height.toInt()} m @ ${p.liftSpeed} m/s")
-        else append(" · launch ${p.launchSpeed.toInt()} m/s, top hat ${p.maxHeight.toInt()} m")
+        if (p.type == ProfileType.LIFT) append(" · lift ${Units.ft(p.spec.height).toInt()} ft @ ${"%.0f".format(Units.mph(p.liftSpeed))} mph")
+        else append(" · launch ${Units.mph(p.launchSpeed).toInt()} mph, top hat ${Units.ft(p.maxHeight).toInt()} ft")
         append(" · track ${p.length.toInt()} m · ${p.rows} cars × ${p.spec.ridersPerCar} riders")
     }
     HmiLabel(facts, 11.sp, bold = true)
