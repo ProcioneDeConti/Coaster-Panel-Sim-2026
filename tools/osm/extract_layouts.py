@@ -62,6 +62,9 @@ def densify(pts, step=4.0):
         out += [(a[0] + (b[0] - a[0]) * t / k, a[1] + (b[1] - a[1]) * t / k) for t in range(k)]
     return out
 
+# Scenery around each ride for the plan view (trees, water, land, grass): see scenery.py.
+exec(open(sys.argv[0].replace('extract_layouts.py', 'scenery.py')).read())
+scenery = []
 rides = [('millennium', 'Millennium Force'), ('magnum', 'Magnum XL-200'), ('maverick', 'Maverick'), ('gemini', 'Gemini'),
          ('tt2', 'Top Thrill 2')]
 # Rides whose station siding joins the launch line through a sliding switch track that OSM does not map.
@@ -150,8 +153,8 @@ for rid, name in rides:
         # prefer the station along the bottom of the screen
         sy = sum(rp[i][1] for i in range(st_end)) / max(1, st_end)
         key = (round(sc, 1), sy)
-        if best is None or key > best[0]: best = (key, sc, rp, min(xs), min(ys), max(xs), max(ys), rs)
-    _, sc, rp, x0, y0, x1, y1, rs = best
+        if best is None or key > best[0]: best = (key, sc, rp, min(xs), min(ys), max(xs), max(ys), rs, r)
+    _, sc, rp, x0, y0, x1, y1, rs, r = best
     ox = (100 - (x1 - x0) * sc) / 2; oy = (56 - (y1 - y0) * sc) / 2
     step = max(1, n // 160)
     sel = list(range(0, n, step))
@@ -163,6 +166,9 @@ for rid, name in rides:
     sw = round(cum[switch_at] / total, 5) if spike else -1.0
     print(f'{rid}: {round(total)} m, station {round(cum[st_end])} m, lift {round(cum[lift_start])}-{round(cum[lift_end])} m tagged={tagged}, {len(pl)} pts'
           + (f', switch at {round(cum[switch_at])} m, spike line {round(sum(math.dist(a, b) for a, b in zip(spike, spike[1:])))} m' if spike else ''))
+    proj = lambda q: (ox + (q[0] * math.cos(r) - q[1] * math.sin(r) - x0) * sc,
+                      oy + (q[0] * math.sin(r) + q[1] * math.cos(r) - y0) * sc)
+    scenery.append((rid, plan_scenery(proj, [(ox + (x - x0) * sc, oy + (y - y0) * sc) for x, y in rp + rs])))
     out.append((rid, name, total, cum[st_end] / total, cum[lift_start] / total, cum[lift_end] / total, tagged, pl, sw, sp))
 
 exec(open(sys.argv[0].replace('extract_layouts.py', 'writer.py')).read())

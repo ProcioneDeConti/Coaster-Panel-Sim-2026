@@ -68,7 +68,7 @@ class SimViewModel : ViewModel() {
     var tagReport by mutableStateOf(emptyList<String>()); private set
     /** Tags the last build couldn't use. */
     var tagRejected by mutableStateOf(emptySet<LayoutTag>()); private set
-    var coasterId by mutableStateOf(CoasterLibrary.default(ProfileType.LIFT).id); private set
+    var coasterId by mutableStateOf("millennium"); private set
     var trainCount by mutableIntStateOf(3); private set
     var plc by mutableStateOf(build(coasterId, 3)); private set
     var timeScale by mutableDoubleStateOf(1.0)

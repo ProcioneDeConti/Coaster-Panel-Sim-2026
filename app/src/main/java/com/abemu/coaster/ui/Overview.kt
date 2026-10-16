@@ -43,6 +43,7 @@ import com.abemu.coaster.sim.LaunchState
 import com.abemu.coaster.sim.ProfileType
 import com.abemu.coaster.sim.RidePlc
 import kotlin.math.abs
+import androidx.compose.ui.draw.clipToBounds
 
 internal val trainColors = listOf(Color(0xFF1565C0), Color(0xFF8E24AA), Color(0xFF00897B), Color(0xFFEF6C00))
 
@@ -391,12 +392,16 @@ fun PlanDiagram(
     }
     // Reused across frames so the cached track paths survive; rebuilt on a new ride or size.
     val xfCache = remember(profile) { arrayOfNulls<PlanTransform>(1) }
+    val scenery = remember(profile) { PlanSceneryCache() }
     val night = Night.on
-    Canvas(modifier.background(if (night) Color(0xFF060A0F) else Color(0xFF0F1A24)).then(tapMod)) {
+    Canvas(modifier.clipToBounds().background(if (night) Color(0xFF060A0F) else Color(0xFF0F1A24)).then(tapMod)) {
         val xf = xfCache[0]?.takeIf { it.width == size.width && it.height == size.height }
             ?: PlanTransform(profile, size.width, size.height).also { xfCache[0] = it }
         fun pt(s: Double) = xf.pt(s)
         fun seg(from: Double, to: Double) = xf.seg(from, to)
+
+        // Scenery from OSM (real rides only), pre-rendered: water, islands, grass, trees.
+        scenery.get(xf, night, this)?.let { drawImage(it) }
 
         // Station platform and transfer spur
         val st = profile.blocks[0]

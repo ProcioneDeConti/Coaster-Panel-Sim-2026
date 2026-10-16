@@ -40,3 +40,5 @@ for rid, name, total, se, ls, le, tg, pl, sw, sp in out:
         lines.append('        )),')
 lines += ['    )', '}', '']
 open(outkt, 'w', encoding='utf-8').write(NL.join(lines))
+
+write_scenery(scenery)

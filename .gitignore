@@ -6,3 +6,4 @@ local.properties
 .kotlin/
 *.log
 tools/spiels/radio_raw/
+tools/osm/data/
