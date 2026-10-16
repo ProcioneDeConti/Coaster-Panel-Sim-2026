@@ -23,7 +23,6 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
@@ -391,7 +390,7 @@ fun PlanDiagram(
     // Reused across frames so the cached track paths survive; rebuilt on a new ride or size.
     val xfCache = remember(profile) { arrayOfNulls<PlanTransform>(1) }
     val night = Night.on
-    Canvas(modifier.graphicsLayer().background(if (night) Color(0xFF060A0F) else Color(0xFF0F1A24)).then(tapMod)) {
+    Canvas(modifier.background(if (night) Color(0xFF060A0F) else Color(0xFF0F1A24)).then(tapMod)) {
         val xf = xfCache[0]?.takeIf { it.width == size.width && it.height == size.height }
             ?: PlanTransform(profile, size.width, size.height).also { xfCache[0] = it }
         fun pt(s: Double) = xf.pt(s)
