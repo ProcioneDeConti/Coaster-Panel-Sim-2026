@@ -114,6 +114,12 @@ class RidePlc(val plant: Plant) {
     private var rollbackText = ""
     /** Seconds a train dwells in an unload station before it is released to load. */
     val unloadDwellSec = 8.0
+    /** Seconds the rear position of a paired station takes to unload and reload its train. */
+    val rearLoadSec = 20.0
+    /** Paired station: the train loaded at the rear position, waiting to leave with the front train. */
+    var rearLoaded = -1; private set
+    /** Paired station: the rear train of the pair, following the front train out; it doesn't load again at the front. */
+    var pairTrain = -1; private set
 
     var loadReady = false; private set
     var unloadReady = false; private set
@@ -347,7 +353,7 @@ class RidePlc(val plant: Plant) {
         }
     }
 
-    val trainInStation get() = occ[0] != -1 && plant.stationTrain() != null
+    val trainInStation get() = occ[0] != -1 && occ[0] != pairTrain && plant.stationTrain() != null
     val allRowsLocked get() = (0 until profile.rows).all { rowLocked(it) }
     val hornActive get() = powered && alarms.hornDemand
     val resetNeeded get() = alarms.active.any { !it.condition } || (eStopped && !inputs.anyEstop)
@@ -642,10 +648,27 @@ class RidePlc(val plant: Plant) {
             // Unload station: train must dwell at the stop (passengers exit) before release.
             val atStop = occ[b] != -1 && plant.trainAtStop(b)?.let { it.id == occ[b] && abs(it.v) < 0.05 } == true
             dwellT[b] = if (blk.kind == BlockKind.UNLOAD && atStop) dwellT[b] + dt else 0.0
-            val unloaded = blk.kind != BlockKind.UNLOAD || dwellT[b] >= unloadDwellSec
+            // The rear position loads only behind a normal front train (one the operators are loading), never behind
+            // the rear train of the last pair: that one is leaving, and this train moves up to become the next front train.
+            val frontLoading = occ[0] != -1 && occ[0] != pairTrain
+            if (blk.pairRear && !frontLoading) dwellT[b] = 0.0
+            if (blk.pairRear && atStop && frontLoading && dwellT[b] >= rearLoadSec && rearLoaded != occ[b]) {
+                plant.trains.firstOrNull { it.id == occ[b] }?.let { plant.reloadRiders(it) }
+                rearLoaded = occ[b]
+                alarms.info("PAIR", "${blk.tag} rear position loaded – train ${occ[b]} waiting to leave with the front train")
+            }
+            val unloaded = when {
+                blk.kind != BlockKind.UNLOAD -> true
+                // Rear position: an empty front means the train runs on through to load there; otherwise it loads here first.
+                blk.pairRear -> rearLoaded == occ[b] || !frontLoading
+                else -> dwellT[b] >= unloadDwellSec
+            }
             if ((blk.kind == BlockKind.BRAKE_RUN || blk.kind == BlockKind.UNLOAD) && running && occ[b] != -1 &&
                 followClear(b) && unloaded && !releaseLatch[b] && transferState == TransferState.IDLE
-            ) latch(b)
+            ) {
+                latch(b)
+                if (blk.pairRear && rearLoaded == occ[b]) { pairTrain = occ[b]; rearLoaded = -1 }
+            }
             if (manualOk && i.manualRelease[b] && occ[b] != -1 && nextClear(b)) {
                 manualOpen[b] = when (blk.kind) {
                     BlockKind.STATION -> { if (restraintsOk && gatesOk) manualDepart = true; manualDepart }
@@ -654,6 +677,20 @@ class RidePlc(val plant: Plant) {
                 }
             }
         }
+        // Paired station: the rear train of the pair runs on from the front position to the lift as soon as it is clear.
+        if (pairTrain != -1) {
+            val gone = plant.trains.none { it.id == pairTrain } ||
+                (occ[0] != pairTrain && pending[0] != pairTrain && profile.blocks.none { it.pairRear && occ[it.index] == pairTrain })
+            if (gone) pairTrain = -1
+            // Same ride-level interlocks as an operator dispatch (weather, air); the station ones belong to the front train.
+            else if (occ[0] == pairTrain && running && !releaseLatch[0] && nextClear(0) && !eStopped && airOk && !weather.hold) {
+                latch(0)
+                dispatchCount++ // throughput; the dispatch timer keeps timing the operators' dispatches
+                alarms.info("DISP", "Train $pairTrain dispatched (rear of pair)")
+            }
+        }
+        if (rearLoaded != -1 && profile.blocks.none { it.pairRear && occ[it.index] == rearLoaded }) rearLoaded = -1
+
         // Stacking: a train standing at its stop (or the lift crest) waiting for the block ahead.
         for (b in 0 until n) {
             val blk = profile.blocks[b]
@@ -707,7 +744,8 @@ class RidePlc(val plant: Plant) {
             val stop = profile.blocks[b].stopPos
             val tr = plant.trains.firstOrNull { it.id == latchedTrain[b] }
             if (releaseLatch[b] && stop != null && tr != null && profile.ahead(stop, tr.s) in 1.5..20.0) passedStop[b] = true
-            val counting = releaseLatch[b] && passedStop[b] && plant.brakes[b].cmdOpen && running && occ[b] == latchedTrain[b]
+            // Keeps watching through a C-stop: a train that has left its stop keeps its release and carries on.
+            val counting = releaseLatch[b] && passedStop[b] && plant.brakes[b].cmdOpen && autoRelease && occ[b] == latchedTrain[b]
             releaseT[b] = if (counting) releaseT[b] + dt else 0.0
             if (releaseT[b] > arrivalLimit(b)) {
                 val nb = profile.blocks[next(b)]

@@ -68,7 +68,7 @@ class InjectedFaults {
  */
 class Plant(val profile: RideProfile, activeTrains: Int, totalTrains: Int = 3) {
     val trains = mutableListOf<Train>()
-    var stored = totalTrains - activeTrains
+    var stored = maxOf(0, totalTrains - activeTrains)
     val brakes = List(profile.blocks.size) { BrakeUnit() }
     val faults = InjectedFaults()
 
@@ -152,6 +152,14 @@ class Plant(val profile: RideProfile, activeTrains: Int, totalTrains: Int = 3) {
         trains.firstOrNull { abs(signedDist(it.s, pos)) < window }
 
     fun stationTrain(): Train? = trainAtStop(0)?.takeIf { abs(it.v) < 0.05 }
+
+    /** Rear position of a paired station: its own crew unloads and reloads [t] (restraints stay locked here). */
+    fun reloadRiders(t: Train) {
+        for (k in t.seatTaken.indices) {
+            t.seatTaken[k] = Math.random() > 0.1
+            t.beltOn[k] = !t.seatTaken[k] || Math.random() > 0.04
+        }
+    }
 
     fun rowLockSensor(row: Int): Boolean {
         val t = stationTrain() ?: return false

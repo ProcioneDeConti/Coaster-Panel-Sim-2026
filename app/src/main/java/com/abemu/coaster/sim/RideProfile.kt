@@ -27,6 +27,8 @@ data class Block(
     val exitLaunch: Double = 0.0,
     /** Short stacking block between the final brake run and the station (holds one train waiting for the station). */
     val approach: Boolean = false,
+    /** Rear loading position of a paired (dual-load) station: it loads on its own and is dispatched with the front train. */
+    val pairRear: Boolean = false,
 )
 
 /** Trim brake: fins that cap the train's speed through [start, end] at [maxSpeed] (m/s). */
@@ -164,7 +166,7 @@ class RideProfile(
     val transferBlock: Int get() = transferOverride ?: blocks.last { it.kind == BlockKind.BRAKE_RUN && !it.approach }.index
 
     /** Most trains the ride can run: one block must always be free for trains to move. */
-    val maxTrains: Int get() = minOf(initialStops.size, 4).let { if (blocks.size <= 4) minOf(it, 3) else it }
+    val maxTrains: Int get() = minOf(initialStops.size, if (spec.pairedStation) 6 else 4).let { if (blocks.size <= 4) minOf(it, 3) else it }
 
     /** Where trains sit at power-up: load station first, then working back from the station. */
     val initialStops: List<Double>

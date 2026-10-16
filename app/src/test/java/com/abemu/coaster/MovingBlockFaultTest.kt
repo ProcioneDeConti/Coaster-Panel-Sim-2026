@@ -14,8 +14,9 @@ import org.junit.Test
  */
 class MovingBlockFaultTest {
     @Test fun randomFaultsNeverCauseContact() {
-        for ((id, seed) in listOf("millennium" to 1, "millennium" to 4, "millennium" to 6, "millennium" to 8, "tt2" to 2)) {
-            val plc = RidePlc(Plant(RideProfile.create(CoasterLibrary.byId(id)), 3))
+        for ((id, seed, trains) in listOf(Triple("millennium", 1, 3), Triple("millennium", 4, 3), Triple("millennium", 6, 3),
+            Triple("millennium", 8, 3), Triple("tt2", 2, 3), Triple("maverick", 7, 6))) {
+            val plc = RidePlc(Plant(RideProfile.create(CoasterLibrary.byId(id)), trains))
             val op = AutoOperator(seed).also { it.randomFaults = true }
             plc.restraintWalk = true
             var t = 0.0
@@ -26,5 +27,29 @@ class MovingBlockFaultTest {
             }
             assertTrue("$id seed $seed: only ${plc.dispatchCount} dispatches", plc.dispatchCount >= 80)
         }
+    }
+
+    /** Maverick's dual-load station: trains leave in pairs, the rear one loaded at the rear position. */
+    @Test fun maverickDispatchesInPairs() {
+        val prof = RideProfile.create(CoasterLibrary.byId("maverick"))
+        assertTrue("6 trains allowed", prof.maxTrains == 6)
+        val plc = RidePlc(Plant(prof, 6))
+        val op = AutoOperator(7).also { it.randomFaults = false }
+        plc.restraintWalk = true
+        var t = 0.0
+        var pairs = 0
+        var head: Any? = null
+        while (t < 2 * 3600.0) {
+            op.update(0.02, plc); plc.scan(0.02); plc.plant.step(0.02); t += 0.02
+            val h = plc.alarms.history
+            if (h.isNotEmpty() && h.first() !== head) {
+                pairs += h.takeWhile { it !== head }.count { it.text.contains("rear of pair") }
+                head = h.first()
+            }
+            assertTrue("contact at t=${t.toInt()}", plc.alarms.active.none { it.code == "COLLIDE" || it.code == "MB_GAP" })
+        }
+        // ~90 trains an hour, half of them the rear of a pair.
+        assertTrue("${plc.dispatchCount} dispatches", plc.dispatchCount >= 160)
+        assertTrue("$pairs pairs of ${plc.dispatchCount}", pairs * 2 in plc.dispatchCount - 4..plc.dispatchCount + 4)
     }
 }

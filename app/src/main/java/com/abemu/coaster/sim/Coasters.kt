@@ -52,6 +52,11 @@ data class CoasterSpec(
      * train is released and moving, instead of waiting for it to clear the block. Station moves happen together.
      */
     val movingBlockStation: Boolean = false,
+    /**
+     * Paired (dual-load) station: a rear loading position behind the main one, plus holding blocks behind the station.
+     * Two trains load at once and leave as a pair; the rear one follows the front train to the foot of the lift.
+     */
+    val pairedStation: Boolean = false,
 )
 
 object CoasterLibrary {
@@ -101,7 +106,10 @@ object CoasterLibrary {
         CoasterSpec("maverick", "Maverick", ProfileType.LAUNCH, 32.0, launchSpeed = 9.0, lsmLift = true,
             hills1 = listOf(0.5, 0.6), mcbrFrac = 0.4, hills2 = listOf(0.55, 0.45, 0.35),
             cars = 6, ridersPerCar = 2, layout = 2, seed = 21, park = "Cedar Point", tunnelLaunch = 31.3, movingBlockStation = true,
-            note = "All-LSM: the 105 ft lift hill is an LSM incline straight out of the station (95° drop), then a tunnel block with the second LSM launch to 70 mph. 4 blocks: station, LSM lift, tunnel block, final brake run."),
+            pairedStation = true,
+            note = "All-LSM: the 105 ft lift hill is an LSM incline straight out of the station (95° drop), then a tunnel block with the second LSM launch to 70 mph. " +
+                "Dual-load station: two trains load together and leave as a pair; the rear train waits at the foot of the lift until the front one is out of the tunnel. " +
+                "7 blocks (station front, LSM lift, tunnel, final brake / transfer, two holding blocks, station rear) for up to 6 trains."),
         CoasterSpec("quantum", "Quantum", ProfileType.LAUNCH, 14.0, launchSpeed = 20.0,
             hills1 = listOf(0.5, 0.4), mcbrFrac = 0.45, hills2 = listOf(0.45),
             cars = 4, ridersPerCar = 4, layout = 0, seed = 3, note = "Family launch coaster."),
@@ -277,6 +285,20 @@ object CoasterLibrary {
             blocks += Block(blocks.size + 1, nextTag(), "Station Approach", BlockKind.BRAKE_RUN, a0, s, s - 5, a0, approach = true)
         }
 
+        // ---- Paired station: holding blocks behind the station, then the rear loading position ----
+        var pairStart = -1.0
+        if (spec.pairedStation) {
+            repeat(2) { i ->
+                val a0 = s
+                to(spec.cars * 2.0 + 2.0 + 14, finalH)
+                blocks += Block(blocks.size + 1, nextTag(), "Holding ${i + 1}", BlockKind.BRAKE_RUN, a0, s, s - 5, a0, approach = true)
+            }
+            val r0 = s
+            pairStart = r0
+            to(spec.cars * 2.0 + 2.0 + 6, finalH)
+            blocks += Block(blocks.size + 1, nextTag(), "Station – Rear", BlockKind.UNLOAD, r0, s, s - 3, r0, pairRear = true)
+        }
+
         // ---- Separate unload station ----
         if (spec.unloadStation) {
             val u0 = s
@@ -287,8 +309,13 @@ object CoasterLibrary {
         to(20.0, 2.0) // into the load station
         val length = s
 
-        val b1 = Block(0, "B1", if (spec.unloadStation) "Load Station" else "Station", BlockKind.STATION, stationStart, 45.0, 30.0, stationStart)
-        val finalEnd = stationStart
+        val b1Name = when {
+            spec.pairedStation -> "Station – Front"
+            spec.unloadStation -> "Load Station"
+            else -> "Station"
+        }
+        val b1 = Block(0, "B1", b1Name, BlockKind.STATION, stationStart, 45.0, 30.0, stationStart)
+        val finalEnd = if (pairStart >= 0) pairStart else stationStart
 
         return RideProfile(
             spec = spec,
