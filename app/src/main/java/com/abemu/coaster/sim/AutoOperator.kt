@@ -36,6 +36,8 @@ class AutoOperator(seed: Int = Random.nextInt()) {
     private var pushed = false
     /** Where the jogged train started, so "done" means it actually moved rather than just sitting across a boundary. */
     private var jogStartS = 0.0
+    /** The repair couldn't re-sync tracking (a train was still moving); do it once everything is at rest. */
+    private var resyncPending = false
     private var nextFaultIn = 300.0
     private val releases = mutableListOf<Pair<Double, () -> Unit>>()
     private var plcRef: RidePlc? = null
@@ -119,6 +121,13 @@ class AutoOperator(seed: Int = Random.nextInt()) {
             }
             Phase.RECOVER -> when {
                 phaseT < 1 -> Unit
+                // Let a C-stop bring every train to rest before anyone starts jogging one (or re-syncs tracking).
+                (stalledBlock(plc) >= 0 || resyncPending) && plc.plant.trains.any { kotlin.math.abs(it.v) > 0.05 } && phaseT < 120 -> Unit
+                resyncPending -> {
+                    resyncPending = false
+                    plc.resyncTracking()
+                    plc.alarms.info("TRK", "Block tracking re-synchronised by maintenance (trains now at rest)")
+                }
                 stalledBlock(plc) >= 0 -> {
                     jogBlock = stalledBlock(plc); jogTrain = plc.occ[jogBlock]; pushed = false
                     jogStartS = plc.plant.trains.firstOrNull { it.id == jogTrain }?.s ?: 0.0
@@ -135,8 +144,12 @@ class AutoOperator(seed: Int = Random.nextInt()) {
                 val tr = plc.plant.trains.firstOrNull { it.id == jogTrain }
                 val at = tr?.let { plc.profile.blockAt(it.s) }
                 val moved = tr != null && plc.profile.ahead(jogStartS, tr.s) in 3.0..(plc.profile.length - 3.0)
-                val done = tr == null || moved && at!!.index != jogBlock && at.kind != BlockKind.LIFT ||
-                    pushed && plc.plant.trainAtStop(at!!.index)?.id == tr.id
+                // Onto the lift counts once the whole train is on it: the lift carries it on in AUTO (it may have to hold
+                // at the crest for the block ahead, which is normal, not a failed jog).
+                val onLift = at?.kind == BlockKind.LIFT && at.index != jogBlock && tr != null &&
+                    plc.profile.ahead(at.start, tr.s) > plc.profile.trainLength
+                val done = tr == null || moved && at!!.index != jogBlock && (at.kind != BlockKind.LIFT || onLift) ||
+                    (pushed || moved) && plc.plant.trainAtStop(at!!.index)?.id == tr.id
                 if (plc.state == RideState.STOPPED && !done && phaseT < 120) {
                     // Re-secure the train first (low air drops the restraint locks); station release needs it.
                     if (phaseT < 1 && phaseT + dt >= 1) { press { i.gatesClose = it }; press { i.restraintClose = it } }
@@ -186,7 +199,8 @@ class AutoOperator(seed: Int = Random.nextInt()) {
         if (plc.plant.trains.all { kotlin.math.abs(it.v) < 0.05 }) {
             plc.resyncTracking()
             plc.alarms.info("TRK", "Block tracking re-synchronised by maintenance")
-        }
+            resyncPending = false
+        } else resyncPending = true
         plc.alarms.info("MNT", "Maintenance: repair complete – $lastFault")
     }
 
