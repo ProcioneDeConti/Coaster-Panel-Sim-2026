@@ -58,7 +58,7 @@ object CoasterLibrary {
 
     val builtIn: List<CoasterSpec> = listOf(
         // ---------------- Lift hill ----------------
-        CoasterSpec("millennium", "Millennium Force", ProfileType.LIFT, 94.5, liftSpeed = 6.0,
+        CoasterSpec("millennium", "Millennium Force", ProfileType.LIFT, 94.5, liftSpeed = 15 / Units.MPH, // 15 mph cable lift (restored to original speed)
             hills1 = listOf(0.62, 0.55, 0.4), mcbrFrac = 0.35, hills2 = listOf(0.6, 0.45, 0.35),
             cars = 9, ridersPerCar = 4, layout = 1, seed = 11, park = "Cedar Point",
             hasMcbr = false, unloadStation = true,
