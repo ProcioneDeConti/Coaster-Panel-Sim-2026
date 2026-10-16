@@ -55,6 +55,9 @@ class SimViewModel : ViewModel() {
         webMapOn = mapServer.running
     }
 
+    var remoteInstructorOn by mutableStateOf(false); private set
+    fun setRemoteInstructor(on: Boolean) { mapServer.instructorEnabled = on; remoteInstructorOn = on }
+
     override fun onCleared() { mapServer.stop() }
 
     /** Loads editor tags for a coaster; set by the activity (tags live in app storage). */
@@ -94,6 +97,20 @@ class SimViewModel : ViewModel() {
     var radioOn by mutableStateOf(true)
     val radio = com.abemu.coaster.sim.RadioDesk()
     var access by mutableStateOf(AccessLevel.OPERATOR)
+    /** Desk-display mode: a virtual crew operates the ride and maintenance fixes its faults. */
+    val autoOp = com.abemu.coaster.sim.AutoOperator()
+    var deskMode by mutableStateOf(false); private set
+    var deskRandomFaults by mutableStateOf(true)
+
+    fun switchDeskMode(on: Boolean) {
+        if (on) { abortDrill(); drill = null; autoOp.reset() } else {
+            val i = plc.inputs
+            i.dispatchL = false; i.dispatchR = false; i.manualRelease.fill(false); i.liftJog = false
+            i.restraintOpen = false; i.restraintClose = false; i.gatesOpen = false; i.gatesClose = false
+            i.loadReady = false; i.unloadReady = false; i.faultReset = false; i.powerOn = false; i.rideStart = false
+        }
+        deskMode = on
+    }
     /** Training drill in progress (or just finished, until dismissed). */
     var drill by mutableStateOf<com.abemu.coaster.sim.Drill?>(null); private set
     val drillResults = androidx.compose.runtime.mutableStateListOf<com.abemu.coaster.sim.DrillResult>()
@@ -119,6 +136,7 @@ class SimViewModel : ViewModel() {
                     plc.plant.windMs = weather.windMph * 0.44704
                     plc.plant.windFromDeg = weather.dirDeg
                     plc.restraintWalk = restraintWalk
+                    if (deskMode) { autoOp.randomFaults = deskRandomFaults; autoOp.update(scanDt, plc) }
                     plc.scan(scanDt)
                     plc.plant.step(scanDt)
                     trends.update(plc, scanDt)
@@ -131,7 +149,10 @@ class SimViewModel : ViewModel() {
                     }
                     acc -= scanDt
                 }
-                mapServer.publish(plc, drill)
+                mapServer.serviceInstructor({ com.abemu.coaster.web.RemoteInstructor.apply(this@SimViewModel, it) }) {
+                    com.abemu.coaster.web.RemoteInstructor.state(this@SimViewModel)
+                }
+                mapServer.publish(plc, drill, if (deskMode) autoOp.status else null)
                 com.abemu.coaster.ui.Night.on = night
                 // Redraw at 30 fps while something moves, otherwise ~10 fps (enough for lamp flashing and
                 // HMI values). Taps on Compose state still recompose immediately.
@@ -160,6 +181,7 @@ class SimViewModel : ViewModel() {
      * point, then hand over to the trainee with the fault injected.
      */
     fun startDrill(sc: com.abemu.coaster.sim.Scenario) {
+        if (deskMode) switchDeskMode(false)
         val id = CoasterLibrary.default(sc.type).id
         val fresh = build(id, sc.trains)
         fresh.dispatchTarget = plc.dispatchTarget

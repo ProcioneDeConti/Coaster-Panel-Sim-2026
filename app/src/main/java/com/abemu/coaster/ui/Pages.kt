@@ -545,6 +545,12 @@ fun SimPage(vm: SimViewModel, onOpenBuilder: () -> Unit, onOpenEditor: () -> Uni
                 }
                 WebMapControls(vm)
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    HmiLabel("Desk display", 11.sp, modifier = Modifier.width(90.dp))
+                    HmiButton(if (vm.deskMode) "ON" else "OFF", active = vm.deskMode, activeColor = Hmi.Ok) { vm.switchDeskMode(!vm.deskMode) }
+                    HmiButton("RANDOM FAULTS", active = vm.deskRandomFaults, activeColor = Hmi.Warn, fontSize = 10.sp) { vm.deskRandomFaults = !vm.deskRandomFaults }
+                    HmiLabel("ride runs itself; maintenance fixes faults", 10.sp, color = Hmi.Dim)
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                     HmiLabel("Debug tools", 11.sp, modifier = Modifier.width(90.dp))
                     HmiButton(if (vm.debugTools) "ON" else "OFF", active = vm.debugTools, activeColor = Hmi.Warn) {
                         vm.debugTools = !vm.debugTools

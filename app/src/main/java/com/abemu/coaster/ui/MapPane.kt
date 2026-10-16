@@ -92,6 +92,7 @@ fun MapPane(vm: SimViewModel, modifier: Modifier = Modifier) {
 /** Instructor-page row: web map server switch and its address. */
 @Composable
 fun WebMapControls(vm: SimViewModel) {
+  Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
     Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
         HmiLabel("Web map", 11.sp, modifier = Modifier.width(90.dp))
         HmiButton(if (vm.webMapOn) "ON" else "OFF", active = vm.webMapOn, activeColor = Hmi.Info) { vm.setWebMap(!vm.webMapOn) }
@@ -106,4 +107,16 @@ fun WebMapControls(vm: SimViewModel) {
             }
         }
     }
+    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+        HmiLabel("Remote instr.", 11.sp, modifier = Modifier.width(90.dp))
+        HmiButton(if (vm.remoteInstructorOn) "ON" else "OFF", enabled = vm.webMapOn, active = vm.remoteInstructorOn,
+            activeColor = Hmi.Warn) { vm.setRemoteInstructor(!vm.remoteInstructorOn) }
+        Column {
+            if (vm.webMapOn && vm.remoteInstructorOn) {
+                vm.mapServer.urls().forEach { HmiLabel("$it/instructor", 11.sp, bold = true, color = Hmi.Info) }
+                HmiLabel("Faults, weather and drills from a browser. Sign in with the instructor PIN.", 10.sp, color = Hmi.Dim)
+            } else HmiLabel("Lets an instructor run faults, weather and drills from a laptop or phone (needs web map on).", 10.sp, color = Hmi.Dim)
+        }
+    }
+  }
 }

@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -61,6 +62,25 @@ fun DrillBanner(vm: SimViewModel, onClick: () -> Unit) {
         Text("   ${clock(d.t)} / par ${clock(d.scenario.parSec)}", color = Color(0xFFE0D4F5), fontSize = 11.sp, fontFamily = FontFamily.Monospace)
         Text("   NEXT: $next", color = Color.White, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
         Text("score ${d.score}", color = Color(0xFFE0D4F5), fontSize = 11.sp)
+    }
+}
+
+/** Desk-display mode strip: what the virtual crew is doing. Tap to hand the ride back. */
+@Composable
+fun DeskBanner(vm: SimViewModel) {
+    vm.frame.longValue
+    if (!vm.deskMode) return
+    val op = vm.autoOp
+    val maint = op.phase.name.startsWith("MAINT") || op.phase.name == "RECOVER" || op.phase.name == "JOG"
+    Row(
+        Modifier.fillMaxWidth().background(if (maint) Color(0xFF8A5A00) else Color(0xFF1B6B3A)).padding(horizontal = 8.dp, vertical = 3.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text("DESK MODE", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+        Text("   ${op.status}", color = Color.White, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+        Text("dispatches ${vm.plc.dispatchCount} · repairs ${op.repairs}", color = Color(0xFFD8F0E0), fontSize = 11.sp)
+        Spacer(Modifier.width(8.dp))
+        Text("STOP ✕", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable { vm.switchDeskMode(false) })
     }
 }
 

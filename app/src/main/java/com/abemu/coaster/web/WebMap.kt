@@ -7,7 +7,7 @@ import kotlin.math.abs
 
 /** JSON snapshots and the browser page for [MapServer]. */
 object WebMap {
-    private fun q(s: String) = buildString {
+    internal fun q(s: String) = buildString {
         append('"')
         for (ch in s) when (ch) {
             '"' -> append("\\\""); '\\' -> append("\\\\"); '\n' -> append("\\n")
@@ -16,7 +16,7 @@ object WebMap {
         append('"')
     }
 
-    private fun d(v: Double) = "%.2f".format(java.util.Locale.US, v)
+    internal fun d(v: Double) = "%.2f".format(java.util.Locale.US, v)
 
     /** Static track layout: the plan polyline sampled every [step] metres, plus block extents. */
     fun geometry(plc: RidePlc, version: Int): String {
@@ -42,7 +42,7 @@ object WebMap {
     }
 
     /** Live state, published each frame while a browser is polling. */
-    fun state(plc: RidePlc, drill: Drill?, version: Int): String {
+    fun state(plc: RidePlc, drill: Drill?, version: Int, desk: String? = null): String {
         val pl = plc.plant
         val top = plc.alarms.firstOut ?: plc.alarms.active.firstOrNull()
         return buildString {
@@ -62,7 +62,7 @@ object WebMap {
                 if (k > 0) append(',')
                 append("{\"id\":${t.id},\"s\":${d(t.s)},\"v\":${d(abs(t.v))}}")
             }
-            append("],\"drill\":")
+            append("],\"desk\":${desk?.let { q(it) } ?: "null"},\"drill\":")
             if (drill == null || drill.finished) append("null") else {
                 val next = drill.nextStep?.let { drill.steps[it].text } ?: ""
                 append("{\"title\":${q(drill.scenario.title)},\"t\":${d(drill.t)},\"next\":${q(next)},\"score\":${drill.score}}")
@@ -91,7 +91,7 @@ object WebMap {
  #conn{font-size:12px;color:#8a96a1}
  @media (max-width:700px){main{flex-direction:column} aside{width:auto}}
 </style></head><body>
-<header><h1 id="name">Ride map</h1><span id="mode" class="chip" style="border:1px solid #afc4dd"></span><span id="state" class="chip"></span><span id="conn"></span></header>
+<header><a id="home" href="/" style="color:#afc4dd;text-decoration:none;font-weight:700">◂ HOME</a><h1 id="name">Ride map</h1><span id="mode" class="chip" style="border:1px solid #afc4dd"></span><span id="state" class="chip"></span><span id="conn"></span></header>
 <div id="alarm">No active alarms</div>
 <div id="drill"></div>
 <main><canvas id="c"></canvas><aside>
@@ -104,6 +104,7 @@ const trainColors=['#1565c0','#8e24aa','#00897b','#ef6c00'];
 let geo=null,st=null,fail=0;
 const cv=document.getElementById('c'),cx=cv.getContext('2d');
 const $=id=>document.getElementById(id);
+if(window!==top)$('home').style.display='none';
 function wrap(s){const L=geo.length;return ((s%L)+L)%L}
 function pt(s){s=wrap(s);const f=s/geo.step,i=Math.floor(f),k=f-i,P=geo.points;const a=P[Math.min(i,P.length-1)],b=P[Math.min(i+1,P.length-1)];return [a[0]+(b[0]-a[0])*k,a[1]+(b[1]-a[1])*k]}
 function span(a,b){let d=wrap(b-a);return d}

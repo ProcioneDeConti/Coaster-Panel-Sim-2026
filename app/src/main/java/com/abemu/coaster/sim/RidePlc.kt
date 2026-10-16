@@ -201,9 +201,23 @@ class RidePlc(val plant: Plant) {
         return launchState == LaunchState.ROLLBACK && tr.spike <= 0 && abs(tr.v) < 0.05 && profile.blockAt(tr.s).kind == BlockKind.LAUNCH
     }
 
+    /** The rollback train is stopped somewhere past the launch track (it crested; tracking missed it). */
+    val rollbackTrainClear: Boolean get() {
+        val tr = plant.trains.firstOrNull { it.id == launchTrain } ?: return false
+        val k = profile.blockAt(tr.s).kind
+        return launchState == LaunchState.ROLLBACK && tr.spike <= 0 && abs(tr.v) < 0.05 && k != BlockKind.LAUNCH && k != BlockKind.STATION
+    }
+    private var rollbackFalse = false
+
     /** Maintenance sign-off of the post-rollback inspection (train, LSM, rollback brakes). */
     fun signOffRollbackInspection(): String {
         if (launchState != LaunchState.ROLLBACK) return "No rollback to recover"
+        if (rollbackTrainClear && !rollbackInspected) {
+            // Tracking lost the crest (e.g. a stop mid-launch) but the train is parked downstream: nothing to recover.
+            rollbackInspected = true; rollbackFalse = true
+            alarms.info("RB", "Inspection: train $launchTrain found at rest clear of the launch track – launch completed, no rollback")
+            return "Train is clear of the launch track – FAULT RESET to clear the rollback"
+        }
         if (!rollbackAtRest) return "Train not yet at rest on the launch track"
         if (rollbackInspected) return "Inspection already signed off"
         rollbackInspected = true
@@ -450,7 +464,12 @@ class RidePlc(val plant: Plant) {
             val left = alarms.reset()
             if (stopFaults > 0) trackClear("fault cleared")
             alarms.acknowledgeAll()
-            if (launchState == LaunchState.ROLLBACK && !alarms.isActive("ROLLBACK")) {
+            if (launchState == LaunchState.ROLLBACK && !alarms.isActive("ROLLBACK") && rollbackFalse) {
+                launchState = LaunchState.IDLE
+                rollbackFalse = false
+                resyncTracking()
+                alarms.info("RB", "Rollback cleared – train $launchTrain completed its launch; tracking re-synchronised")
+            } else if (launchState == LaunchState.ROLLBACK && !alarms.isActive("ROLLBACK")) {
                 launchState = LaunchState.IDLE
                 relaunchHold = true; relaunchArmed = false
                 alarms.info("RB", "Rollback recovery – LSM returning train $launchTrain to the launch position; relaunch needs authorization")
@@ -754,6 +773,7 @@ class RidePlc(val plant: Plant) {
         launchState = LaunchState.ROLLBACK
         rollbacks++
         rollbackInspected = false
+        rollbackFalse = false
         rollbackText = text
         alarms.raise("ROLLBACK", text, Severity.CSTOP)
     }

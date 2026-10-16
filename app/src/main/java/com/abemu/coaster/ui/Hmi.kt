@@ -116,6 +116,7 @@ fun HmiTerminal(vm: SimViewModel, modifier: Modifier = Modifier) {
             TitleBar(vm, page) { showLogin = true }
             AlarmBanner(vm) { page = HmiPage.ALARMS }
             DrillBanner(vm) { page = HmiPage.TRAINING }
+            DeskBanner(vm)
             Box(Modifier.weight(1f).fillMaxWidth().padding(6.dp)) {
                 when (page) {
                     HmiPage.OVERVIEW -> OverviewPage(vm)
