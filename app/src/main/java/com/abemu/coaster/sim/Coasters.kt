@@ -34,7 +34,7 @@ data class CoasterSpec(
     val note: String = "",
     val hasMcbr: Boolean = true,
     val unloadStation: Boolean = false,
-    /** A dispatch is held in the station until the block after the lift is clear (Millennium Force). */
+    /** A dispatch is held in the station until the lift is clear and the train on the course is stopped on its brakes (Millennium Force). */
     val dispatchHoldForCourse: Boolean = false,
     /** If > 0, the MCBR is a tunnel block whose exit LSM launches trains to this speed (m/s). */
     val tunnelLaunch: Double = 0.0,
@@ -63,8 +63,8 @@ object CoasterLibrary {
         CoasterSpec("millennium", "Millennium Force", ProfileType.LIFT, 94.5, liftSpeed = 15 / Units.MPH, // 15 mph cable lift (restored to original speed)
             hills1 = listOf(0.62, 0.55, 0.4), mcbrFrac = 0.35, hills2 = listOf(0.6, 0.45, 0.35),
             cars = 9, ridersPerCar = 4, layout = 1, seed = 11, park = "Cedar Point",
-            hasMcbr = false, unloadStation = true, dispatchHoldForCourse = true,
-            note = "Giga coaster with cable lift. 5 blocks: load, lift, main course (no MCBR) ending at the brake run, final brake, unload. Dispatch holds the train in the station until the main course block is clear."),
+            hasMcbr = false, unloadStation = true, dispatchHoldForCourse = true, movingBlockStation = true,
+            note = "Giga coaster with cable lift. 4 blocks: load, lift, main course ending at the block brake before unload (the first brakes are trims), unload. Dispatch holds until the lift is clear and the course train is stopped on the brakes; then all three trains advance together."),
         CoasterSpec("magnum", "Magnum XL-200", ProfileType.LIFT, 62.5, liftSpeed = 4.0,
             hills1 = listOf(0.7, 0.6, 0.55, 0.45), mcbrFrac = 0.4, hills2 = listOf(0.6, 0.5, 0.4, 0.3),
             cars = 6, ridersPerCar = 6, layout = 1, seed = 4, park = "Cedar Point",
@@ -264,20 +264,11 @@ object CoasterLibrary {
         val finalFlat = s
         to(bl2 + 10, finalH)
         val finalName = when {
-            spec.dispatchHoldForCourse -> "Main Course / Brake Run"
             !spec.hasMcbr -> "Main Course / Final Brake"
             spec.unloadStation -> "Final Brake"
             else -> "Final Brake / Transfer"
         }
         blocks += Block(blocks.size + 1, nextTag(), finalName, BlockKind.BRAKE_RUN, blocks.last().end, s, s - 5, finalFlat + 5)
-
-        // ---- Second brake-run block: the course block ends at the first brake section, so a train held on the
-        //      brakes doesn't keep the course occupied and a held dispatch can go once the course itself is clear ----
-        if (spec.dispatchHoldForCourse) {
-            val f0 = s
-            to(spec.cars * 2.0 + 2.0 + 14, finalH)
-            blocks += Block(blocks.size + 1, nextTag(), "Final Brake", BlockKind.BRAKE_RUN, f0, s, s - 5, f0)
-        }
 
         // ---- Station approach: a second brake block so a train can stack behind the station ----
         if (spec.hasMcbr && !spec.unloadStation && !spec.movingBlockStation) {

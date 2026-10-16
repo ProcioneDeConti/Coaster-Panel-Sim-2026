@@ -115,6 +115,8 @@ class RidePlc(val plant: Plant) {
     var dispatchCount = 0; private set
     /** Dispatch accepted but held in the station until [courseBlock] clears ([CoasterSpec.dispatchHoldForCourse]). */
     var dispatchArmed = false; private set
+    /** A dispatch press would be accepted (sent now, or held on a hold ride); equals [dispatchReady] elsewhere. */
+    var stationReady = false; private set
     /** Block after the lift, which must be clear before a held dispatch releases; -1 if the ride has no such hold. */
     val courseBlock = if (profile.spec.dispatchHoldForCourse)
         profile.blocks.indexOfFirst { it.kind == BlockKind.LIFT }.let { if (it < 0) -1 else (it + 1) % profile.blocks.size } else -1
@@ -285,7 +287,12 @@ class RidePlc(val plant: Plant) {
     val eStopped get() = state == RideState.ESTOP
     fun next(i: Int) = (i + 1) % n
     fun nextClear(i: Int) = occ[next(i)] == -1 && !entry(next(i))
-    private fun courseClear() = nextClear(courseBlock - 1)
+    /** No train out on the course: the block is empty, or its train is stopped at the block brake ready to advance. */
+    private fun courseClear() = !entry(courseBlock) &&
+        (occ[courseBlock] == -1 || plant.trainAtStop(courseBlock)?.let { it.id == occ[courseBlock] && abs(it.v) < 0.05 } == true)
+    /** Lift clear and no train on the course: a held dispatch may go, and the trains behind follow it in (moving-block stations). */
+    private fun trackClear() = nextClear(0) && courseClear()
+    private val holdBlocks get() = profile.blocks[1].let { "${it.tag} ${it.name} clear" } + " and " + profile.blocks[courseBlock].let { "${it.tag} train on the brakes" }
 
     private fun dispatch() {
         latch(0)
@@ -568,6 +575,7 @@ class RidePlc(val plant: Plant) {
         val restraintsOk = allRowsLocked && !restraintCmd
         val gatesOk = gatesClosed && !gateCmd
 
+        val liftPermissive = Permissive("${profile.blocks[1].tag} ${profile.blocks[1].name} clear", nextClear(0))
         permissives = listOf(
             Permissive("Key switch in AUTO", m == KeyMode.AUTO),
             Permissive("Ride running", running),
@@ -579,11 +587,13 @@ class RidePlc(val plant: Plant) {
             Permissive("Unload operator at stand (foot switch)", unloadAtStand),
             Permissive("Load side operator ready", loadReady),
             Permissive("Unload side operator ready", unloadReady),
-            Permissive("${profile.blocks[1].tag} ${profile.blocks[1].name} clear", nextClear(0)),
+            liftPermissive,
             Permissive("Air pressure ≥ 75 psi", airOk),
             Permissive("No weather hold", !weather.hold),
         ) + if (hasSwitch) listOf(Permissive("Switch track aligned to station", switchStationLs && !switchCmd)) else emptyList()
         dispatchReady = permissives.all { it.ok } && !releaseLatch[0]
+        // Hold rides accept a dispatch with the lift or course still occupied and hold the train until both clear.
+        stationReady = if (courseBlock >= 0) permissives.all { it.ok || it === liftPermissive } && !releaseLatch[0] else dispatchReady
 
         val single = i.singleButtonDispatch && (i.dispatchL || i.dispatchR)
         val dL = i.dispatchL || single
@@ -595,17 +605,17 @@ class RidePlc(val plant: Plant) {
             twoHandSpent = true
             when {
                 abs(tDispL - tDispR) > 0.5 -> alarms.info("DISP", "Dispatch refused – two-hand timing exceeded 0.5 s")
-                !dispatchReady -> alarms.info("DISP", "Dispatch refused – permissives not made")
-                courseBlock >= 0 && !courseClear() -> if (!dispatchArmed) {
+                !stationReady -> alarms.info("DISP", "Dispatch refused – permissives not made")
+                courseBlock >= 0 && !trackClear() -> if (!dispatchArmed) {
                     dispatchArmed = true
-                    alarms.info("DISP", "Dispatch armed – holding train ${occ[0]} until ${profile.blocks[courseBlock].tag} ${profile.blocks[courseBlock].name} clear")
+                    alarms.info("DISP", "Dispatch armed – holding train ${occ[0]} until $holdBlocks")
                 }
                 else -> dispatch()
             }
         }
         if (dispatchArmed) when {
-            !dispatchReady -> { dispatchArmed = false; alarms.info("DISP", "Held dispatch cancelled – permissives lost") }
-            courseClear() -> { dispatchArmed = false; dispatch() }
+            !stationReady -> { dispatchArmed = false; alarms.info("DISP", "Held dispatch cancelled – permissives lost") }
+            trackClear() -> { dispatchArmed = false; dispatch() }
         }
 
         // ---------- Block brakes ----------
@@ -702,7 +712,7 @@ class RidePlc(val plant: Plant) {
             state == RideState.STOPPED && m == KeyMode.MANUAL -> "Manual – hold block release to move trains"
             state == RideState.STOPPED && m == KeyMode.MAINT -> "Maintenance – interlocks bypassed"
             releaseLatch[0] -> "Train departing station"
-            dispatchArmed -> "Dispatch held – waiting for ${profile.blocks[courseBlock].tag} ${profile.blocks[courseBlock].name} clear"
+            dispatchArmed -> "Dispatch held – waiting for $holdBlocks"
             dispatchReady -> "READY TO DISPATCH"
             inStation -> "Loading – " + (permissives.firstOrNull { !it.ok }?.label?.let { "waiting: $it" } ?: "")
             else -> "Waiting for train"

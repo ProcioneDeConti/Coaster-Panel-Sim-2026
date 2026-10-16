@@ -99,8 +99,76 @@ class RideCycleTest {
 
     @Test fun millenniumForceBlocks() {
         val p = RideProfile.create(CoasterLibrary.byId("millennium"))
-        assertEquals(listOf("Load Station", "Lift Hill", "Main Course / Brake Run", "Final Brake", "Unload Station"), p.blocks.map { it.name })
+        assertEquals(listOf("Load Station", "Lift Hill", "Main Course / Final Brake", "Unload Station"), p.blocks.map { it.name })
         runCycles(CoasterLibrary.byId("millennium"), 3, 6, NOOP)
+    }
+
+    @Test fun millenniumHoldsDispatchPressedWithLiftOccupied() {
+        val plc = RidePlc(Plant(RideProfile.create(CoasterLibrary.byId("millennium")), 3))
+        plc.inputs.mode = KeyMode.AUTO; plc.inputs.loadFootSwitch = true; plc.inputs.unloadFootSwitch = true
+        press(plc) { plc.inputs.powerOn = it }
+        press(plc) { plc.inputs.rideStart = it }
+        step(plc, 7.0)
+        fun loadAndPress() {
+            var w = 0.0
+            while (!(plc.trainInStation && !plc.releaseLatch[0]) && w < 300) { step(plc, 0.1); w += 0.1 }
+            press(plc) { plc.inputs.restraintOpen = it }
+            press(plc) { plc.inputs.restraintClose = it }
+            step(plc, 4.0)
+            press(plc) { plc.inputs.loadReady = it }
+            press(plc) { plc.inputs.unloadReady = it }
+            plc.inputs.dispatchL = true; plc.inputs.dispatchR = true
+            step(plc, 0.2)
+            plc.inputs.dispatchL = false; plc.inputs.dispatchR = false
+        }
+        loadAndPress()
+        assertEquals(1, plc.dispatchCount)
+        loadAndPress()
+        assertTrue("lift should still be occupied: occ=${plc.occ.toList()}", plc.occ[1] != -1)
+        assertTrue("press with the lift occupied should be held, not refused", plc.dispatchArmed)
+        assertTrue(plc.stationReady && !plc.dispatchReady)
+        var w = 0.0
+        while (plc.dispatchArmed && w < 300) { step(plc, 0.1); w += 0.1 }
+        assertEquals(2, plc.dispatchCount)
+        assertTrue(plc.releaseLatch[0])
+    }
+
+    @Test fun millenniumAdvancesAllThreeTrainsTogether() {
+        val plc = RidePlc(Plant(RideProfile.create(CoasterLibrary.byId("millennium")), 3))
+        plc.inputs.mode = KeyMode.AUTO; plc.inputs.loadFootSwitch = true; plc.inputs.unloadFootSwitch = true
+        press(plc) { plc.inputs.powerOn = it }
+        press(plc) { plc.inputs.rideStart = it }
+        step(plc, 7.0)
+        var dispatched = 0
+        var together = 0
+        var guard = 0.0
+        while (dispatched < 8 && guard < 3000) {
+            if (plc.trainInStation && !plc.releaseLatch[0] && !plc.dispatchArmed) {
+                press(plc) { plc.inputs.restraintOpen = it }
+                press(plc) { plc.inputs.restraintClose = it }
+                step(plc, 4.0)
+                press(plc) { plc.inputs.loadReady = it }
+                press(plc) { plc.inputs.unloadReady = it }
+                var w = 0.0
+                while (!plc.stationReady && w < 120) { step(plc, 0.5); w += 0.5 }
+                plc.inputs.dispatchL = true; plc.inputs.dispatchR = true
+                step(plc, 0.2)
+                plc.inputs.dispatchL = false; plc.inputs.dispatchR = false
+                var h = 0.0
+                while (plc.dispatchArmed && h < 300) { step(plc, 0.1); h += 0.1 }
+                // Every train sitting in unload or on the brakes when the station train left should be rolling within a few seconds.
+                val behind = listOf(3, 2).mapNotNull { b -> plc.occ[b].takeIf { it != -1 } }
+                step(plc, 6.0)
+                if (behind.size == 2 && behind.all { id -> plc.trainSpeed(id) > 0.2 || plc.occ[3] == id || plc.occ[0] == id }) together++
+                dispatched++
+                guard += 15
+            }
+            step(plc, 0.5); guard += 0.5
+            val bad = plc.alarms.active.filter { it.severity.ordinal <= Severity.CSTOP.ordinal }
+            assertTrue("alarms: " + bad.map { it.text }, bad.isEmpty())
+        }
+        assertEquals(8, dispatched)
+        assertTrue("trains never advanced together ($together)", together >= 3)
     }
 
     private fun runCycles(type: ProfileType, trains: Int, dispatches: Int, configure: (RidePlc) -> Unit = {}): RidePlc =

@@ -128,14 +128,17 @@ fun OperatorConsole(vm: SimViewModel, modifier: Modifier = Modifier) {
         // Engraved legends only: ride status and mode messages belong on the HMI, not the hardware panel.
         PanelSection("DISPATCH") {
             val ready = plc.dispatchReady
+            // Held dispatch (waiting for the course block): the lens flashes yellow until the train releases.
+            val held = plc.dispatchArmed
+            val lens = if (held) Lens.Yellow else Lens.Green
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                PushButton("DISPATCH", Lens.Green, ready && blink || plc.releaseLatch[0], { inp.dispatchL = it }, size = 56.dp)
+                PushButton("DISPATCH", lens, (ready || held) && blink || plc.releaseLatch[0], { inp.dispatchL = it }, size = 56.dp)
                 // The remote stands sit between the dispatch buttons to keep the console short.
                 Row(Modifier.weight(1f).padding(horizontal = 6.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
                     OperatorStand("LOAD STAND", inp.loadStandEstop, { inp.loadStandEstop = it }, plc.loadReady) { inp.loadReady = it }
                     OperatorStand("UNLOAD STAND", inp.unloadStandEstop, { inp.unloadStandEstop = it }, plc.unloadReady) { inp.unloadReady = it }
                 }
-                PushButton("DISPATCH", Lens.Green, ready && blink || plc.releaseLatch[0], { inp.dispatchR = it }, size = 56.dp)
+                PushButton("DISPATCH", lens, (ready || held) && blink || plc.releaseLatch[0], { inp.dispatchR = it }, size = 56.dp)
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
                 LegendPlate("TWO-HAND DISPATCH – PRESS BOTH TOGETHER", 260.dp)

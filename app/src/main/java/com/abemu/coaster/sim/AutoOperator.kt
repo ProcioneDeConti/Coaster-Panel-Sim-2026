@@ -100,7 +100,7 @@ class AutoOperator(seed: Int = Random.nextInt()) {
             }
             Phase.READY -> if (phaseT > 1) go(Phase.DISPATCH)
             Phase.DISPATCH -> when {
-                plc.dispatchReady && phaseT > 1.5 -> {
+                plc.stationReady && !plc.dispatchArmed && phaseT > 1.5 -> {
                     i.dispatchL = true; i.dispatchR = true
                     releases += (t + 0.3) to { i.dispatchL = false; i.dispatchR = false }
                     go(Phase.WAIT)

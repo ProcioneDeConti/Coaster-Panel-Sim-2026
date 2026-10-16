@@ -182,11 +182,15 @@ fun StationPage(vm: SimViewModel) {
             }
             Box(
                 Modifier.fillMaxWidth().padding(top = 8.dp)
-                    .background(if (plc.dispatchReady) (if (flasher()) Hmi.Ok else Color(0xFF156B31)) else Color(0xFF7A8189))
+                    .background(when {
+                        plc.dispatchArmed -> if (flasher()) Hmi.Warn else Color(0xFF7A5A00)
+                        plc.dispatchReady -> if (flasher()) Hmi.Ok else Color(0xFF156B31)
+                        else -> Color(0xFF7A8189)
+                    })
                     .padding(10.dp),
                 contentAlignment = Alignment.Center,
             ) {
-                Text(if (plc.dispatchReady) "READY TO DISPATCH" else "NOT READY", color = Color.White, fontWeight = FontWeight.Bold)
+                Text(when { plc.dispatchArmed -> "DISPATCH HELD – COURSE OCCUPIED"; plc.dispatchReady -> "READY TO DISPATCH"; else -> "NOT READY" }, color = Color.White, fontWeight = FontWeight.Bold)
             }
         }
         SpielPanel(plc.profile.spec.id, plc.profile.name, Modifier.fillMaxWidth())
