@@ -10,6 +10,7 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
+import com.abemu.coaster.sim.FictionalScenery
 import com.abemu.coaster.sim.RealScenery
 import kotlin.math.cos
 import kotlin.math.sin
@@ -20,7 +21,7 @@ class PlanSceneryCache {
     private var image: ImageBitmap? = null
 
     fun get(xf: PlanTransform, night: Boolean, density: Density): ImageBitmap? {
-        val sc = RealScenery.byId(xf.profile.spec.id) ?: return null
+        val sc = RealScenery.byId(xf.profile.spec.id) ?: FictionalScenery.forProfile(xf.profile)
         val k = Triple(xf, night, density)
         if (k != key) {
             val img = ImageBitmap(xf.width.toInt().coerceAtLeast(1), xf.height.toInt().coerceAtLeast(1))
