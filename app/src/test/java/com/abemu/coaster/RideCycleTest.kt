@@ -99,7 +99,7 @@ class RideCycleTest {
 
     @Test fun millenniumForceBlocks() {
         val p = RideProfile.create(CoasterLibrary.byId("millennium"))
-        assertEquals(listOf("Load Station", "Lift Hill", "Main Course / Final Brake", "Unload Station"), p.blocks.map { it.name })
+        assertEquals(listOf("Load Station", "Lift Hill", "Main Course / Brake Run", "Final Brake", "Unload Station"), p.blocks.map { it.name })
         runCycles(CoasterLibrary.byId("millennium"), 3, 6, NOOP)
     }
 
@@ -121,7 +121,7 @@ class RideCycleTest {
         var guard = 0.0
         var maxV = 0.0
         while (done < dispatches && guard < 3000) {
-            if (plc.trainInStation && !plc.releaseLatch[0]) {
+            if (plc.trainInStation && !plc.releaseLatch[0] && !plc.dispatchArmed) {
                 press(plc) { plc.inputs.restraintOpen = it }
                 press(plc) { plc.inputs.gatesOpen = it }
                 step(plc, 2.0)

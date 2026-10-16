@@ -113,6 +113,11 @@ class RidePlc(val plant: Plant) {
     var permissives: List<Permissive> = emptyList(); private set
     var dispatchReady = false; private set
     var dispatchCount = 0; private set
+    /** Dispatch accepted but held in the station until [courseBlock] clears ([CoasterSpec.dispatchHoldForCourse]). */
+    var dispatchArmed = false; private set
+    /** Block after the lift, which must be clear before a held dispatch releases; -1 if the ride has no such hold. */
+    val courseBlock = if (profile.spec.dispatchHoldForCourse)
+        profile.blocks.indexOfFirst { it.kind == BlockKind.LIFT }.let { if (it < 0) -1 else (it + 1) % profile.blocks.size } else -1
     var statusText = ""; private set
 
     private var t = 0.0
@@ -280,6 +285,21 @@ class RidePlc(val plant: Plant) {
     val eStopped get() = state == RideState.ESTOP
     fun next(i: Int) = (i + 1) % n
     fun nextClear(i: Int) = occ[next(i)] == -1 && !entry(next(i))
+    private fun courseClear() = nextClear(courseBlock - 1)
+
+    private fun dispatch() {
+        latch(0)
+        dispatchCount++
+        dispatchTimes.addLast(t)
+        if (dispatchTimes.size > 20) dispatchTimes.removeFirst()
+        loadReady = false; unloadReady = false
+        alarms.info("DISP", "Train ${occ[0]} dispatched")
+        plant.stationTrain()?.let { st ->
+            val open = st.seatTaken.indices.filter { st.seatTaken[it] && !st.beltOn[it] }
+            if (open.isNotEmpty()) alarms.info("CHECK", "Train ${st.id} dispatched with a seatbelt undone – " +
+                open.joinToString { "car ${it / st.seatsPerRow + 1} seat ${it % st.seatsPerRow + 1}" })
+        }
+    }
     val movingBlock get() = profile.spec.movingBlockStation
     /** Station zone of a moving-block ride: a following train may enter while the train ahead is leaving. */
     fun stationZone(b: Int) = movingBlock && profile.blocks[b].kind.let { it == BlockKind.STATION || it == BlockKind.UNLOAD }
@@ -576,20 +596,16 @@ class RidePlc(val plant: Plant) {
             when {
                 abs(tDispL - tDispR) > 0.5 -> alarms.info("DISP", "Dispatch refused – two-hand timing exceeded 0.5 s")
                 !dispatchReady -> alarms.info("DISP", "Dispatch refused – permissives not made")
-                else -> {
-                    latch(0)
-                    dispatchCount++
-                    dispatchTimes.addLast(t)
-                    if (dispatchTimes.size > 20) dispatchTimes.removeFirst()
-                    loadReady = false; unloadReady = false
-                    alarms.info("DISP", "Train ${occ[0]} dispatched")
-                    plant.stationTrain()?.let { st ->
-                        val open = st.seatTaken.indices.filter { st.seatTaken[it] && !st.beltOn[it] }
-                        if (open.isNotEmpty()) alarms.info("CHECK", "Train ${st.id} dispatched with a seatbelt undone – " +
-                            open.joinToString { "car ${it / st.seatsPerRow + 1} seat ${it % st.seatsPerRow + 1}" })
-                    }
+                courseBlock >= 0 && !courseClear() -> if (!dispatchArmed) {
+                    dispatchArmed = true
+                    alarms.info("DISP", "Dispatch armed – holding train ${occ[0]} until ${profile.blocks[courseBlock].tag} ${profile.blocks[courseBlock].name} clear")
                 }
+                else -> dispatch()
             }
+        }
+        if (dispatchArmed) when {
+            !dispatchReady -> { dispatchArmed = false; alarms.info("DISP", "Held dispatch cancelled – permissives lost") }
+            courseClear() -> { dispatchArmed = false; dispatch() }
         }
 
         // ---------- Block brakes ----------
@@ -686,6 +702,7 @@ class RidePlc(val plant: Plant) {
             state == RideState.STOPPED && m == KeyMode.MANUAL -> "Manual – hold block release to move trains"
             state == RideState.STOPPED && m == KeyMode.MAINT -> "Maintenance – interlocks bypassed"
             releaseLatch[0] -> "Train departing station"
+            dispatchArmed -> "Dispatch held – waiting for ${profile.blocks[courseBlock].tag} ${profile.blocks[courseBlock].name} clear"
             dispatchReady -> "READY TO DISPATCH"
             inStation -> "Loading – " + (permissives.firstOrNull { !it.ok }?.label?.let { "waiting: $it" } ?: "")
             else -> "Waiting for train"

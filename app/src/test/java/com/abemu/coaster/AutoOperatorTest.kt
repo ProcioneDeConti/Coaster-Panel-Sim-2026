@@ -41,4 +41,21 @@ class AutoOperatorTest {
             assertTrue("$type $seed ${plc.dispatchCount} ${op.repairs} ${op.status}", op.repairs >= 3 && plc.dispatchCount >= 100)
         }
     }
+
+    @Test fun millenniumHoldsDispatchForCourseInDeskMode() {
+        val plc = RidePlc(Plant(RideProfile.create(CoasterLibrary.builtIn.first { it.id == "millennium" }), 3))
+        val op = AutoOperator(3).also { it.randomFaults = false }
+        plc.restraintWalk = true
+        var t = 0.0
+        var armedSec = 0.0
+        while (t < 1800.0) {
+            op.update(0.02, plc); plc.scan(0.02); plc.plant.step(0.02); t += 0.02
+            if (plc.dispatchArmed) {
+                armedSec += 0.02
+                assertTrue("held dispatch with restraints open", plc.allRowsLocked)
+            }
+        }
+        println("millennium dispatches=${plc.dispatchCount} armed=${armedSec.toInt()}s repairs=${op.repairs} last=${op.lastFault}")
+        assertTrue("${plc.dispatchCount} ${op.status}", plc.dispatchCount >= 15 && op.repairs == 0)
+    }
 }

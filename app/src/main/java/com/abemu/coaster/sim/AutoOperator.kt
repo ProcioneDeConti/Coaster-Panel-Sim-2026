@@ -84,6 +84,7 @@ class AutoOperator(seed: Int = Random.nextInt()) {
             Phase.WAIT -> when {
                 plc.state != RideState.RUNNING && plc.state != RideState.STARTING -> go(Phase.START)
                 plc.relaunchHold && !plc.relaunchArmed -> if (phaseT > 3) { plc.authorizeRelaunch(); phaseT = 0.0 }
+                plc.dispatchArmed -> phaseT = 0.0 // held for the course block; the train leaves on its own
                 plc.trainInStation && !plc.releaseLatch[0] && phaseT > 1.5 -> { press { i.restraintOpen = it }; go(Phase.UNLOAD) }
             }
             Phase.UNLOAD -> if (phaseT > 3) { press { i.gatesOpen = it }; go(Phase.BOARD) }
