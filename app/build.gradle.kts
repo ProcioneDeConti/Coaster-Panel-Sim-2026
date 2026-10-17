@@ -45,6 +45,13 @@ kotlin {
     compilerOptions { jvmTarget.set(JvmTarget.JVM_17) }
 }
 
+composeCompiler {
+    // The UI reads plain (non-snapshot) PLC fields and redraws off vm.frame ticks. Strong skipping skips any child
+    // whose RidePlc / SimViewModel argument is the same instance (and memoizes draw lambdas the same way), so the
+    // plan, block table, weather etc. froze until a tab switch rebuilt them. Unstable params must always recompose.
+    featureFlags.add(org.jetbrains.kotlin.compose.compiler.gradle.ComposeFeatureFlag.StrongSkipping.disabled())
+}
+
 dependencies {
     implementation(platform("androidx.compose:compose-bom:2025.11.00"))
     implementation("androidx.compose.ui:ui")
