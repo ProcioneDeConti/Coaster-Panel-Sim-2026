@@ -316,7 +316,7 @@ class Plant(val profile: RideProfile, activeTrains: Int, totalTrains: Int = 3) {
                     }
                     if (t.v < 0) t.v = 0.0
                 } else {
-                    val trim = if (block.kind == BlockKind.BRAKE_RUN) 6.0 else 3.0
+                    val trim = if (block.kind == BlockKind.BRAKE_RUN) p.spec.passSpeed else 3.0
                     when {
                         // Mid-course LSM launch past the stop point (e.g. a tunnel launch).
                         block.exitLaunch > 0 && toStop <= 0.5 && safetyPower && !faults.lsmFault ->
@@ -336,6 +336,7 @@ class Plant(val profile: RideProfile, activeTrains: Int, totalTrains: Int = 3) {
         p.trims.firstOrNull { p.inRange(t.s, it.start, it.end) }?.let { tr ->
             if (t.v > tr.maxSpeed) t.v = max(tr.maxSpeed, t.v - 5.0 * dt)
         }
+        p.pullOut?.takeIf { p.inRange(t.s, it.start, it.end) && t.v > it.maxSpeed }?.let { t.v = max(it.maxSpeed, t.v - 12.0 * dt) }
 
         val before = t.s
         t.s = p.wrap(t.s + t.v * dt)

@@ -65,7 +65,7 @@ class RideCycleTest {
     }
 
     @Test fun trimAndSensorTags() {
-        val base = RideProfile.create(CoasterLibrary.byId("magnum"))
+        val base = RideProfile.create(CoasterLibrary.byId("cyclone"))
         val c0 = base.blocks[1].end; val c1 = base.blocks[base.transferBlock].brakeStart!!
         val a = c0 + 0.15 * (c1 - c0)
         val px = c0 + 0.6 * (c1 - c0)
@@ -74,7 +74,7 @@ class RideCycleTest {
             LayoutTag("SENSOR", px / base.length, px / base.length, "MID"),
         ))
         assertTrue(r.report.toString(), r.rejected.isEmpty())
-        val trim = r.profile.trims.single()
+        val trim = r.profile.trims.single { it.name == "Trim 1" }
         var seen = false
         var maxInTrimEnd = 0.0
         val plc = runCycles(r.profile, 2, 4, NOOP)

@@ -58,6 +58,8 @@ class RideProfile(
     private val transferOverride: Int? = null,
     val trims: List<Trim> = emptyList(),
     val sensors: List<Prox> = emptyList(),
+    /** Wheel scrub in a hard pull-out: caps speed like a trim, but there's no brake hardware (not drawn). */
+    val pullOut: Trim? = null,
 ) {
     val type get() = spec.type
     val name get() = spec.name
@@ -218,7 +220,7 @@ class RideProfile(
         trims: List<Trim> = emptyList(), sensors: List<Prox> = emptyList(),
     ) = RideProfile(
         spec, length, elevation ?: this.elevation, blocks, plan, liftStart, liftEnd, liftCrestSensor,
-        launchStart, launchEnd, crestSensor, rollbackSpeed, transfer, trims, sensors,
+        launchStart, launchEnd, crestSensor, rollbackSpeed, transfer, trims, sensors, pullOut,
     )
 
     companion object {

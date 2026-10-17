@@ -7,3 +7,4 @@ local.properties
 *.log
 tools/spiels/radio_raw/
 tools/osm/data/
+tools/recordings/

@@ -166,7 +166,7 @@ object TagLayout {
         }
 
         val elevation = if (accepted.isEmpty()) null else simplify(h, p.length)
-        return TaggedLayout(p.withBlocks(blocks, transfer, elevation, trims, sensors), report, rejected)
+        return TaggedLayout(p.withBlocks(blocks, transfer, elevation, p.trims + trims, sensors), report, rejected)
     }
 
     /** Grid heights to (s, h) points, dropping points that lie on a straight line. */
