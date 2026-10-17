@@ -23,6 +23,7 @@ class RadioDesk {
     private var plcRef: RidePlc? = null
     private var prevState = RideState.POWER_OFF
     private var opened = false
+    private var openDispatches = 0L
     private var seenAlarms = emptySet<String>()
     private var maintCalled = false
     private var downT = 0.0
@@ -93,7 +94,9 @@ class RadioDesk {
         val running = st == RideState.RUNNING
 
         if (st == RideState.POWER_OFF) opened = false
-        if (running && !opened) { opened = true; if (prevState == RideState.STARTING) say("opening", 2.0, 1800.0) }
+        // Only a return to running after the ride was already open counts as "back up".
+        val wasOpen = opened
+        if (running && !opened) { opened = true; openDispatches = plc.dispatchCount.toLong(); if (prevState == RideState.STARTING) say("opening", 2.0, 1800.0) }
         if (st == RideState.ESTOP && prevState != RideState.ESTOP) {
             say("estop", 3.0, 120.0)
             say("estop_maint", 14.0, 120.0)
@@ -118,7 +121,7 @@ class RadioDesk {
         // Back up and running after a fault: maintenance signs off, or the supervisor notes the ride is back.
         val faulted = active.any { it.severity.ordinal <= Severity.CSTOP.ordinal }
         downT = if (running) downT else downT + dt
-        if (running && prevState != RideState.RUNNING && opened && !faulted) {
+        if (running && prevState != RideState.RUNNING && wasOpen && !faulted) {
             when {
                 maintCalled -> say("maint_clear", 3.0, 60.0)
                 downT > 90 -> say("resume", 4.0, 300.0)
@@ -140,7 +143,9 @@ class RadioDesk {
         if (opened && st == RideState.STOPPED && !faulted && !maintCalled && !wx.hold && downT > 150) say("down_query", 0.0, 600.0)
 
         // Slow dispatching: trains stacked on the brakes for a while.
-        if (running && plc.stackT > 30 && !stackCalled) {
+        // Trains staged behind the station at start-up aren't stacking: wait until every train has gone round once.
+        val cycled = plc.dispatchCount - openDispatches >= plc.plant.trains.size
+        if (running && cycled && plc.stackT > 30 && !stackCalled) {
             stackCalled = true
             val first = lastSaid["stacking"]
             if (first != null && t - first < 600) say("stacking_2", 0.0, 120.0) else say("stacking", 0.0, 120.0)

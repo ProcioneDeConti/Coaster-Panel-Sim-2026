@@ -30,6 +30,7 @@ enum class SoundKind(val label: String) {
     LSM("LSM launch"),
     STATION_PNEUMATICS("Gates & restraints"),
     AMBIENCE("Ambience (wind / air)"),
+    STATION_MUSIC("Station music"),
 }
 
 /**

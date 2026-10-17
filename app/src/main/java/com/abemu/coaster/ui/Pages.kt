@@ -74,71 +74,99 @@ fun StationPage(vm: SimViewModel) {
                 // Train plan view: per-seat restraint locks, the operator's car checks, gates. Tap a car to check it.
                 var walkMsg by remember { mutableStateOf("") }
                 val rowsN = plc.profile.rows
-                Canvas(Modifier.fillMaxWidth().height(180.dp).pointerInput(plc) {
+                // Layout in dp: unload platform, rails + train, gates, load platform.
+                // Riders only show once the load gates have opened for this train.
+                var boarded by remember(st?.id) { mutableStateOf(false) }
+                if (st != null && plant.gatePos > 0.0) boarded = true
+                val u = with(androidx.compose.ui.platform.LocalDensity.current) { 1.dp.toPx() }
+                val margin = 12 * u
+                val trainY = 30 * u
+                val trainH = 62 * u
+                Canvas(Modifier.fillMaxWidth().height(154.dp).pointerInput(plc) {
                     detectTapGestures { p ->
-                        val carW = (size.width - 40f) / rowsN
-                        val r = ((p.x - 20f) / carW).toInt()
-                        if (p.y in 32f..108f && r in 0 until rowsN) walkMsg = plc.checkCar(r)
+                        val carW = (size.width - margin * 2) / rowsN
+                        val r = ((p.x - margin) / carW).toInt()
+                        if (p.y in trainY..trainY + trainH && p.x >= margin && r in 0 until rowsN) walkMsg = plc.checkCar(r)
                     }
                 }) {
                     val rows = rowsN
-                    val margin = 20f
                     val carW = (size.width - margin * 2) / rows
-                    val trainY = 40f
-                    val trainH = 60f
-                    drawRect(Color(0xFF9EA4AA), Offset(0f, trainY - 8), Size(size.width, trainH + 16))
+                    val label = TextStyle(color = Color(0xFFE0E0E0), fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
+                    // Unload platform (top).
+                    drawRect(Color(0xFF6D4C41), Offset.Zero, Size(size.width, 18 * u))
+                    drawText(tm, "UNLOAD PLATFORM", Offset(margin, 3 * u), label)
+                    // Station track: two rails along the train.
+                    for (ry in listOf(trainY + 10 * u, trainY + trainH - 10 * u))
+                        drawLine(Color(0xFF8A9096), Offset(0f, ry), Offset(size.width, ry), 3 * u)
                     for (r in 0 until rows) {
                         val x0 = margin + r * carW
                         if (st != null) {
                             val rowOk = plant.rowLockSensor(r)
-                            drawRect(Color(0xFF1565C0), Offset(x0 + 3, trainY), Size(carW - 6, trainH))
+                            val body = Offset(x0 + 3 * u, trainY)
+                            val bodySize = Size(carW - 6 * u, trainH)
+                            val corner = androidx.compose.ui.geometry.CornerRadius(8 * u)
+                            drawRoundRect(Color(0xFF0D47A1), body, bodySize, corner)
+                            drawRoundRect(Color(0xFF1E88E5), body, bodySize, corner, style = Stroke(2 * u))
                             // Seats in two columns, front to back; each lit by its own lock switch.
                             val per = st.seatsPerRow
                             val cols = if (per >= 2) 2 else 1
                             val lines = (per + cols - 1) / cols
-                            val sw = (carW - 20) / lines
-                            val sh = (trainH - 16) / cols
+                            val sw = (carW - 18 * u) / lines
+                            val sh = (trainH - 12 * u) / cols
                             for (k in 0 until per) {
                                 val idx = r * per + k
-                                val o = Offset(x0 + 10 + (k / cols) * sw, trainY + 8 + (k % cols) * sh)
-                                drawRect(if (st.seatLocked[idx]) Color(0xFF2EBD59) else Color(0xFFE53935), o + Offset(2f, 2f), Size(sw - 4, sh - 4))
-                                if (st.seatTaken[idx]) drawCircle(Color(0x99000000), minOf(sw, sh) * 0.18f, o + Offset(sw / 2, sh / 2))
+                                val o = Offset(x0 + 9 * u + (k / cols) * sw, trainY + 6 * u + (k % cols) * sh)
+                                val seat = Size(sw - 4 * u, sh - 4 * u)
+                                drawRoundRect(if (st.seatLocked[idx]) Color(0xFF2EBD59) else Color(0xFFFFB300), o + Offset(2 * u, 2 * u), seat,
+                                    androidx.compose.ui.geometry.CornerRadius(4 * u))
+                                if (boarded && st.seatTaken[idx]) drawCircle(Color(0xCCFFFFFF), minOf(sw, sh) * 0.17f, o + Offset(sw / 2, sh / 2))
                             }
+                            if (!rowOk) drawRoundRect(Color(0xFFFF5252), body, bodySize, corner, style = Stroke(3 * u))
                             if (plc.carChecked[r]) {
-                                drawRect(Color.White, Offset(x0 + 4, trainY + 1), Size(carW - 8, trainH - 2), style = Stroke(4f))
-                                drawText(tm, "✓", Offset(x0 + carW / 2 - 6, trainY - 30), TextStyle(color = Hmi.Ok, fontSize = 16.sp, fontWeight = FontWeight.Bold))
+                                drawRoundRect(Color.White, body, bodySize, corner, style = Stroke(3 * u))
+                                drawText(tm, "✓", Offset(x0 + carW - 18 * u, trainY - 14 * u),
+                                    TextStyle(color = Hmi.Ok, fontSize = 12.sp, fontWeight = FontWeight.Bold))
                             }
-                            if (!rowOk) drawRect(Color(0xFFFFEB3B), Offset(x0 + 4, trainY + 1), Size(carW - 8, trainH - 2), style = Stroke(3f))
                         }
                     }
-                    // Gates (load side, bottom): set back from the train so each leaf swings 90° about its hinge
-                    // in toward the train, as on the real platform. The position indicator's bar is horizontal when
-                    // closed and vertical when open.
+                    // Direction of travel: a green arrow off the nose of the front car (row 1, on the left).
+                    if (st != null) {
+                        val cy = trainY + trainH / 2
+                        drawPath(androidx.compose.ui.graphics.Path().apply {
+                            moveTo(margin - 10 * u, cy); lineTo(margin + 1 * u, cy - 9 * u); lineTo(margin + 1 * u, cy + 9 * u); close()
+                        }, Color(0xFF2EBD59))
+                    }
+                    // Load gates, one per car, right under it: each leaf swings 90° about its hinge toward the train.
                     val open = plant.gatePos.toFloat().coerceIn(0f, 1f)
-                    val len = minOf(carW * 0.55f, 110f)
-                    val gateY = trainY + trainH + 8 + len + 10
+                    val len = minOf(carW * 0.45f, 30 * u)
+                    val gateY = trainY + trainH + 8 * u + len
                     val gateColor = if (plant.gateClosedSensor) Color(0xFF2EBD59) else Color(0xFFFFB300)
                     val ang = open * (PI / 2).toFloat()
                     for (r in 0 until rows) {
                         val x0 = margin + r * carW
-                        val hinge = Offset(x0 + 6, gateY)
-                        // Fixed fence from the gate opening to the next row
-                        drawLine(Color(0xFF424242), Offset(x0 + 6 + len, gateY), Offset(x0 + carW - 2, gateY), 4f)
-                        drawLine(gateColor, hinge, hinge + Offset(len * cos(ang), -len * sin(ang)), 6f)
-                        drawCircle(Color(0xFF424242), 4f, hinge)
-                        val c = Offset(x0 + carW * 0.8f, gateY + 28)
-                        val rad = minOf(10f, carW * 0.12f)
-                        drawCircle(Color(0xFF202020), rad + 2, c)
+                        val hinge = Offset(x0 + carW / 2 - len / 2, gateY)
+                        drawLine(Color(0xFF616161), Offset(x0, gateY), hinge, 3 * u)
+                        drawLine(Color(0xFF616161), Offset(hinge.x + len, gateY), Offset(x0 + carW, gateY), 3 * u)
+                        drawLine(gateColor, hinge, hinge + Offset(len * cos(ang), -len * sin(ang)), 4 * u, cap = androidx.compose.ui.graphics.StrokeCap.Round)
+                        drawCircle(Color(0xFF424242), 3 * u, hinge)
+                        // Position indicator beside the gate: bar horizontal when closed, vertical when open.
+                        val rad = minOf(7 * u, carW * 0.1f)
+                        val c = Offset(hinge.x - rad - 6 * u, gateY - rad - 5 * u)
+                        drawCircle(Color(0xFF202020), rad + 2 * u, c)
                         drawCircle(gateColor, rad, c)
                         val d = Offset(rad * 0.85f * cos(ang), rad * 0.85f * sin(ang))
-                        drawLine(Color.Black, c - d, c + d, 3f)
+                        drawLine(Color.Black, c - d, c + d, 2 * u)
                     }
-                    drawRect(Color(0xFF6D4C41), Offset(0f, 0f), Size(size.width, 18f)) // unload platform
+                    // Load platform (bottom).
+                    val loadY = gateY + 6 * u
+                    drawRect(Color(0xFF5D6670), Offset(0f, loadY), Size(size.width, size.height - loadY))
+                    drawText(tm, "LOAD PLATFORM", Offset(margin, loadY + 3 * u), label)
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    HmiLabel("Unload platform ▲", 10.sp, color = Hmi.Dim)
-                    HmiLabel("Seat lock:  ■ locked  ■ unlocked  ● rider", 10.sp, color = Hmi.Dim)
-                    HmiLabel("Load gates ▼  (— closed  | open)", 10.sp, color = Hmi.Dim)
+                Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                    HmiLabel("■ locked", 10.sp, color = Color(0xFF2EBD59))
+                    HmiLabel("■ unlocked", 10.sp, color = Color(0xFFFFB300))
+                    HmiLabel("● rider", 10.sp, color = Hmi.Dim)
+                    HmiLabel("gate: green closed · amber open", 10.sp, color = Hmi.Dim)
                 }
                 if (plc.restraintWalk) {
                     val left = plc.carChecked.count { !it }

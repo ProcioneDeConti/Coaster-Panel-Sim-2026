@@ -1,6 +1,14 @@
 package com.abemu.coaster.ui
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.res.painterResource
+import com.abemu.coaster.R
 import androidx.compose.foundation.border
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Arrangement
@@ -45,10 +53,14 @@ fun OperatorConsole(vm: SimViewModel, modifier: Modifier = Modifier) {
             .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("OPERATOR CONSOLE  ·  OC-1", color = Color(0xFFD0D6DD), fontSize = 13.sp, fontWeight = FontWeight.Bold,
-                letterSpacing = 2.sp, modifier = Modifier.weight(1f))
-            Text("120 VAC / 24 VDC", color = Color(0xFF8A929C), fontSize = 10.sp)
+        Box {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("OPERATOR CONSOLE  ·  OC-1", color = Color(0xFFD0D6DD), fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                    letterSpacing = 2.sp, modifier = Modifier.weight(1f))
+                Text("120 VAC / 24 VDC", color = Color(0xFF8A929C), fontSize = 10.sp)
+            }
+            // Easter egg: the real ride's logo slapped on the panel like a sticker.
+            stickerFor(plc.profile.spec.id)?.let { CoasterSticker(it) }
         }
 
         // --- Power / mode / E-Stop ---
@@ -171,5 +183,31 @@ private fun OperatorStand(
             EStopButton(estop, onEstop, size = 48.dp, label = "E-STOP", plateWidth = 64.dp)
             PushButton("READY", Lens.White, ready, onReady, size = 42.dp, plateWidth = 56.dp)
         }
+    }
+}
+
+/** Logo of the real ride a profile is modelled on, if we have one. */
+private fun stickerFor(rideId: String): Int? = when (rideId) {
+    "millennium" -> R.drawable.sticker_millennium
+    "magnum" -> R.drawable.sticker_magnum
+    "gemini" -> R.drawable.sticker_gemini
+    "maverick" -> R.drawable.sticker_maverick
+    "tt2" -> R.drawable.sticker_tt2
+    else -> null
+}
+
+/** A logo with a die-cut white border and a drop shadow, stuck on slightly crooked over the console title. */
+@Composable
+private fun CoasterSticker(res: Int) {
+    val painter = painterResource(res)
+    val w = 96.dp
+    val h = w * (painter.intrinsicSize.height / painter.intrinsicSize.width).coerceIn(0.25f, 1f)
+    Box(Modifier.offset(x = 2.dp, y = 8.dp).rotate(-7f).size(w, h)) {
+        val outline = 2.dp
+        Image(painter, null, Modifier.offset(1.5.dp, 2.5.dp).size(w, h), colorFilter = ColorFilter.tint(Color(0x99000000)))
+        for ((dx, dy) in listOf(-1 to -1, 0 to -1, 1 to -1, -1 to 0, 1 to 0, -1 to 1, 0 to 1, 1 to 1)) {
+            Image(painter, null, Modifier.offset(outline * dx, outline * dy).size(w, h), colorFilter = ColorFilter.tint(Color.White))
+        }
+        Image(painter, null, Modifier.size(w, h))
     }
 }

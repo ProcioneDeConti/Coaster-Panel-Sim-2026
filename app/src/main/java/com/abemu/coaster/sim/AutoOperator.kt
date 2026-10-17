@@ -96,7 +96,9 @@ class AutoOperator(seed: Int = Random.nextInt()) {
             Phase.BOARD -> if (phaseT > 12) { press { i.gatesClose = it }; press { i.restraintClose = it }; go(Phase.SECURE) }
             Phase.SECURE -> if (plc.allRowsLocked && plc.plant.gateClosedSensor && phaseT > 2) { row = 0; go(Phase.CHECK) }
             Phase.CHECK -> if (phaseT > 1.2) {
-                if (row < plc.profile.rows) { plc.checkCar(row); row++; phaseT = 0.0 }
+                // Two attendants: one works back from the front car, one forward from the back; they meet in the middle.
+                val rows = plc.profile.rows
+                if (row < (rows + 1) / 2) { plc.checkCar(row); plc.checkCar(rows - 1 - row); row++; phaseT = 0.0 }
                 else if (plc.carChecked.all { it } || !plc.restraintWalk) {
                     if (!plc.loadReady) press { i.loadReady = it }
                     if (!plc.unloadReady) press { i.unloadReady = it }
