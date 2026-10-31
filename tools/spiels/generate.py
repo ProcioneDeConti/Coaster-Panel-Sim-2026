@@ -37,7 +37,7 @@ def parse(path):
         if m:
             if label:
                 spiels.append((label, " ".join(lines).strip()))
-            label, lines = m.group(1), []
+            label, lines = m.group(1).split("|")[0].strip(), []  # "ID | Button title": the ID names the files
         elif label and line:
             lines.append(line)
     if label:

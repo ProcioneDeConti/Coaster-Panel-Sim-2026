@@ -20,6 +20,7 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import com.abemu.coaster.ui.StationMusic
+import com.abemu.coaster.ui.DeskPa
 import com.abemu.coaster.ui.Haptics
 import com.abemu.coaster.ui.HmiTerminal
 import com.abemu.coaster.ui.MapPane
@@ -58,6 +59,7 @@ class MainActivity : ComponentActivity() {
             MaterialTheme(colorScheme = darkColorScheme()) {
                 RideSounds(vm)
                 StationMusic(vm)
+                DeskPa(vm)
                 RideHaptics(vm)
                 RadioPlayer(vm)
                 ScaledToDesign {

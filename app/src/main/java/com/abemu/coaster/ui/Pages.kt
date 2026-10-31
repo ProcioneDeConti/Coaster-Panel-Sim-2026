@@ -82,7 +82,7 @@ fun StationPage(vm: SimViewModel) {
                 val margin = 12 * u
                 val trainY = 30 * u
                 val trainH = 62 * u
-                Canvas(Modifier.fillMaxWidth().height(154.dp).pointerInput(plc) {
+                Canvas(Modifier.fillMaxWidth().height(154.dp).pointerInput(plc, u) {
                     detectTapGestures { p ->
                         val carW = (size.width - margin * 2) / rowsN
                         val r = ((p.x - margin) / carW).toInt()
@@ -93,8 +93,8 @@ fun StationPage(vm: SimViewModel) {
                     val carW = (size.width - margin * 2) / rows
                     val label = TextStyle(color = Color(0xFFE0E0E0), fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
                     // Unload platform (top).
-                    drawRect(Color(0xFF6D4C41), Offset.Zero, Size(size.width, 18 * u))
-                    drawText(tm, "UNLOAD PLATFORM", Offset(margin, 3 * u), label)
+                    drawRect(Color(0xFF6D4C41), Offset.Zero, Size(size.width, 16 * u))
+                    drawText(tm, "UNLOAD PLATFORM", Offset(margin, 2 * u), label)
                     // Station track: two rails along the train.
                     for (ry in listOf(trainY + 10 * u, trainY + trainH - 10 * u))
                         drawLine(Color(0xFF8A9096), Offset(0f, ry), Offset(size.width, ry), 3 * u)
@@ -124,8 +124,8 @@ fun StationPage(vm: SimViewModel) {
                             if (!rowOk) drawRoundRect(Color(0xFFFF5252), body, bodySize, corner, style = Stroke(3 * u))
                             if (plc.carChecked[r]) {
                                 drawRoundRect(Color.White, body, bodySize, corner, style = Stroke(3 * u))
-                                drawText(tm, "✓", Offset(x0 + carW - 18 * u, trainY - 14 * u),
-                                    TextStyle(color = Hmi.Ok, fontSize = 12.sp, fontWeight = FontWeight.Bold))
+                                drawText(tm, "✓", Offset(x0 + carW - 16 * u, trainY - 13 * u),
+                                    TextStyle(color = Hmi.Ok, fontSize = 10.sp, fontWeight = FontWeight.Bold))
                             }
                         }
                     }
@@ -151,7 +151,8 @@ fun StationPage(vm: SimViewModel) {
                         drawCircle(Color(0xFF424242), 3 * u, hinge)
                         // Position indicator beside the gate: bar horizontal when closed, vertical when open.
                         val rad = minOf(7 * u, carW * 0.1f)
-                        val c = Offset(hinge.x - rad - 6 * u, gateY - rad - 5 * u)
+                        // Kept inside this car's span so it can't run into the neighbouring fence on short cars.
+                        val c = Offset(maxOf(hinge.x - rad - 6 * u, x0 + rad + 3 * u), gateY - rad - 5 * u)
                         drawCircle(Color(0xFF202020), rad + 2 * u, c)
                         drawCircle(gateColor, rad, c)
                         val d = Offset(rad * 0.85f * cos(ang), rad * 0.85f * sin(ang))
