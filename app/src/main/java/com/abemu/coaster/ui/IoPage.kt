@@ -19,6 +19,16 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -77,16 +87,26 @@ fun IoPage(vm: SimViewModel) {
 private fun RackView(vm: SimViewModel, plc: RidePlc, mods: List<IoModule>) {
     var sel by remember(plc) { mutableIntStateOf(1) }
     val (chassis, slots) = IoMap.chassisFor(mods.size)
+    val tm = rememberTextMeasurer()
     Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         HmiFrame("$chassis CHASSIS · $slots SLOTS · 1756-PA75 POWER SUPPLY") {
-            Row(
-                Modifier.horizontalScroll(rememberScrollState()).background(Color(0xFF6E757C)).padding(4.dp),
-                horizontalArrangement = Arrangement.spacedBy(3.dp),
-            ) {
-                PowerSupply()
-                for (s in 0 until slots) {
-                    val m = mods.firstOrNull { it.slot == s }
-                    if (m == null) EmptySlot(s) else ModuleCard(plc, m, sel == s) { sel = s }
+            Box(Modifier.horizontalScroll(rememberScrollState()).padding(4.dp)) {
+                // Sheet-metal chassis: top rail with slot numbers, the modules, bottom rail with the catalog plate.
+                Column(
+                    Modifier.width(IntrinsicSize.Max)
+                        .background(ChassisMetal, RoundedCornerShape(3.dp))
+                        .border(1.dp, Color(0xFF2E3338), RoundedCornerShape(3.dp))
+                        .padding(horizontal = 8.dp),
+                ) {
+                    ChassisRail(slots, top = true, chassis)
+                    Row(horizontalArrangement = Arrangement.spacedBy(SlotGap)) {
+                        PowerSupplyFace(tm)
+                        for (s in 0 until slots) {
+                            val m = mods.firstOrNull { it.slot == s }
+                            if (m == null) SlotFiller(tm) else ModuleFace(tm, plc, m, sel == s) { sel = s }
+                        }
+                    }
+                    ChassisRail(slots, top = false, chassis)
                 }
             }
         }
@@ -94,112 +114,47 @@ private fun RackView(vm: SimViewModel, plc: RidePlc, mods: List<IoModule>) {
     }
 }
 
-@Composable
-private fun PowerSupply() {
-    Column(
-        Modifier.width(54.dp).height(300.dp).background(Color(0xFF3A3F45), RoundedCornerShape(2.dp)).padding(4.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Text("PA75", color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.Bold)
-        Box(Modifier.padding(top = 6.dp).size(8.dp).background(Hmi.Ok, CircleShape))
-        Text("PWR", color = Color(0xFFB5BCC5), fontSize = 7.sp)
-    }
-}
+private val SlotGap = 3.dp
+private val ChassisMetal = Brush.verticalGradient(listOf(Color(0xFFA9AFB5), Color(0xFF8A9198), Color(0xFF7B828A), Color(0xFF959CA3)))
 
+/** Top rail carries the slot numbers over each slot; the bottom rail the chassis plate. Both have mounting holes. */
 @Composable
-private fun EmptySlot(slot: Int) {
-    Column(
-        Modifier.width(48.dp).height(300.dp).background(Color(0xFF50565C), RoundedCornerShape(2.dp)),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Text("$slot", color = Color(0xFFB5BCC5), fontSize = 9.sp)
-        Text("EMPTY", color = Color(0xFF8A9096), fontSize = 7.sp, modifier = Modifier.padding(top = 130.dp))
-    }
-}
-
-private fun safetyModule(m: IoModule) = m.kind == ModuleKind.SAFETY_IN || m.kind == ModuleKind.SAFETY_OUT
-
-@Composable
-private fun ModuleCard(plc: RidePlc, m: IoModule, selected: Boolean, onClick: () -> Unit) {
-    val safety = safetyModule(m) || m.kind == ModuleKind.CPU
-    val faulted = m.kind == ModuleKind.SAFETY_IN && plc.safety.ioFault
-    Column(
-        Modifier.width(62.dp).height(300.dp)
-            .background(Color(0xFF2B2F33), RoundedCornerShape(2.dp))
-            .border(if (selected) 2.dp else 1.dp, if (selected) Hmi.Info else Color.Black, RoundedCornerShape(2.dp))
-            .clickable { Haptics.tick(); onClick() },
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        // Safety modules carry a red stripe, like the real hardware.
-        Box(Modifier.fillMaxWidth().height(5.dp).background(if (safety) Color(0xFFC62828) else Color(0xFF51606F)))
-        Text("${m.slot}", color = Color(0xFFB5BCC5), fontSize = 9.sp)
-        Text(m.catalog.removePrefix("1756-"), color = Color.White, fontSize = 8.sp, fontWeight = FontWeight.Bold, maxLines = 1)
-        if (m.kind == ModuleKind.CPU) {
-            CpuLeds(plc)
-            return@Column
+private fun ChassisRail(slots: Int, top: Boolean, chassis: String) {
+    Box(Modifier.fillMaxWidth().height(18.dp)) {
+        Canvas(Modifier.matchParentSize()) {
+            val u = 1.dp.toPx()
+            for (x in listOf(-4 * u, size.width + 4 * u)) {
+                drawRoundRect(Color(0xFF2A2E33), Offset(x - 2.5f * u, size.height / 2 - 3.5f * u), Size(5 * u, 7 * u), CornerRadius(2.5f * u))
+            }
+            val y = if (top) u else size.height - u
+            drawLine(Color.White.copy(alpha = 0.35f), Offset(0f, y), Offset(size.width, y), u * 0.6f)
         }
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 2.dp)) {
-            val okColor = if (faulted) (if (flasher()) Hmi.Bad else Color(0xFF4A1010)) else Hmi.Ok
-            Box(Modifier.size(6.dp).background(okColor, CircleShape))
-            Text(" OK", color = Color(0xFFB5BCC5), fontSize = 7.sp)
-        }
-        if (m.kind == ModuleKind.ANALOG) {
-            Text("8 CH\nANALOG", color = Color(0xFFB5BCC5), fontSize = 7.sp, textAlign = TextAlign.Center)
-            return@Column
-        }
-        // Point LEDs in two columns: 0–7 and 8–15.
-        val per = if (m.kind == ModuleKind.SAFETY_OUT) 8 else 16
-        val half = if (per <= 8) per else 8
-        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            for (col in 0 until 2) {
-                if (col == 1 && per <= 8) break
-                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    for (k in col * half until (col + 1) * half) {
-                        val p = m.points.getOrNull(k)
-                        val on = p?.value(plc) == true
-                        val forced = p != null && plc.forces[p.tag] != null
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("%2d".format(k), color = Color(0xFF8A9096), fontSize = 6.sp, fontFamily = FontFamily.Monospace)
-                            Box(
-                                Modifier.padding(start = 2.dp).size(width = 9.dp, height = 7.dp)
-                                    .background(if (on) (if (m.kind == ModuleKind.OUTPUT || m.kind == ModuleKind.SAFETY_OUT) Color(0xFFFFC400) else Color(0xFF39E26A)) else Color(0xFF1A1C1F))
-                                    .border(1.dp, if (forced) ForceAmber else Color(0xFF111111)),
-                            )
+        if (top) {
+            Row(Modifier.align(Alignment.Center), horizontalArrangement = Arrangement.spacedBy(SlotGap)) {
+                Box(Modifier.width(PsWidth))
+                for (s in 0 until slots) {
+                    Box(Modifier.width(SlotWidth), contentAlignment = Alignment.Center) {
+                        Box(Modifier.background(Color(0xFF23272B), RoundedCornerShape(2.dp)).padding(horizontal = 5.dp)) {
+                            Text("$s", color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
                         }
                     }
                 }
+            }
+        } else {
+            Row(Modifier.align(Alignment.Center).fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("⏚", color = Color(0xFF23272B), fontSize = 11.sp)
+                Spacer(Modifier.width(6.dp))
+                Box(Modifier.background(Color(0xFF23272B), RoundedCornerShape(2.dp)).padding(horizontal = 6.dp)) {
+                    Text("$chassis · SERIES C", color = Color(0xFFD6DADE), fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                }
+                Spacer(Modifier.weight(1f))
+                Text("CONTROLLOGIX CHASSIS", color = Color(0xFF3A4046), fontSize = 8.sp, fontWeight = FontWeight.Bold)
             }
         }
     }
 }
 
-@Composable
-private fun CpuLeds(plc: RidePlc) {
-    val display = when {
-        plc.safety.ioFault -> "I/O FLT"
-        plc.forces.any -> "FRC"
-        else -> "Rem Run"
-    }
-    Box(Modifier.padding(vertical = 4.dp).background(Color.Black).padding(horizontal = 3.dp, vertical = 2.dp)) {
-        Text(display, color = Color(0xFF7CFF8A), fontSize = 7.sp, fontFamily = FontFamily.Monospace)
-    }
-    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-        CpuLed("RUN", Hmi.Ok)
-        CpuLed("FORCE", if (plc.forces.any) ForceAmber else null)
-        CpuLed("SD", null)
-        CpuLed("OK", Hmi.Ok)
-        CpuLed("SAFE", Hmi.Ok)
-        CpuLed("I/O", if (plc.safety.ioFault) (if (flasher()) Hmi.Bad else null) else Hmi.Ok)
-    }
-}
-
-@Composable
-private fun CpuLed(label: String, color: Color?) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.size(6.dp).background(color ?: Color(0xFF1A1C1F), CircleShape))
-        Text(" $label", color = Color(0xFFB5BCC5), fontSize = 7.sp)
-    }
-}
+private fun safetyModule(m: IoModule) = m.kind == ModuleKind.SAFETY_IN || m.kind == ModuleKind.SAFETY_OUT
 
 @Composable
 private fun ModuleDetail(vm: SimViewModel, plc: RidePlc, m: IoModule) {
@@ -223,24 +178,92 @@ private fun ModuleDetail(vm: SimViewModel, plc: RidePlc, m: IoModule) {
                 if (safetyModule(m)) HmiLabel("Safety I/O – read only. Safety tags cannot be forced while the safety task is locked.", 10.sp, color = Hmi.Dim)
                 else if (!canForce) HmiLabel("🔒 Log in as MAINTENANCE to install forces.", 10.sp, color = Hmi.Bad)
                 else HmiLabel("⚠ Forces override the field and the program. A forced input hides the real device from all interlocks.", 10.sp, color = Color(0xFF9A6A00))
-                LazyColumn(Modifier.fillMaxWidth().height(170.dp).background(Color.White).border(1.dp, Color(0xFF8C939A))) {
-                    items(m.points.withIndex().toList()) { (k, p) ->
-                        val forced = plc.forces[p.tag]
-                        Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 1.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Indicator(p.value(plc), Hmi.Ok, Color(0xFF5E666E), 10)
-                            Text(" ${m.address(k)}", fontSize = 9.sp, fontFamily = FontFamily.Monospace, color = Hmi.Dim, modifier = Modifier.width(130.dp))
-                            Text(p.tag, fontSize = 10.sp, fontFamily = FontFamily.Monospace, color = Hmi.Text, modifier = Modifier.weight(1f))
-                            if (forced != null) Text("F=${if (forced) 1 else 0} ", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFF9A6A00))
-                            if (p.forcible && !safetyModule(m)) {
-                                HmiButton("1", enabled = canForce, active = forced == true, activeColor = Hmi.Warn, fontSize = 9.sp) { plc.force(p.tag, true) }
-                                HmiButton("0", enabled = canForce, active = forced == false, activeColor = Hmi.Warn, fontSize = 9.sp) { plc.force(p.tag, false) }
-                                HmiButton("✕", enabled = canForce && forced != null, fontSize = 9.sp) { plc.force(p.tag, null) }
-                            }
+                MonitorTags(plc, m, canForce)
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------- monitor tags grid
+
+private val GridLine = Color(0xFFD3D8DD)
+private val ForcedCell = Color(0xFFFFE3A0)
+
+/** Programming-software style "Monitor Tags" grid for one module's points. */
+@Composable
+private fun MonitorTags(plc: RidePlc, m: IoModule, canForce: Boolean) {
+    val forcible = !safetyModule(m)
+    val out = m.kind == ModuleKind.OUTPUT || m.kind == ModuleKind.SAFETY_OUT
+    Column(Modifier.fillMaxWidth().border(1.dp, Color(0xFF8C939A))) {
+        Row(
+            Modifier.fillMaxWidth().height(20.dp)
+                .background(Brush.verticalGradient(listOf(Color(0xFFF4F6F8), Color(0xFFD9DEE3))))
+                .drawBehind { drawLine(Color(0xFF9AA2AA), Offset(0f, size.height), Offset(size.width, size.height), 1f) },
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            GridCell("Name", Modifier.weight(1.3f), header = true)
+            GridCell("Value", Modifier.width(46.dp), header = true, end = true)
+            GridCell("Force Mask", Modifier.width(66.dp), header = true)
+            GridCell("Style", Modifier.width(56.dp), header = true)
+            GridCell("Data Type", Modifier.width(60.dp), header = true)
+            GridCell("Address", Modifier.weight(1.2f), header = true)
+            if (forcible) GridCell("Force", Modifier.width(112.dp), header = true)
+        }
+        LazyColumn(Modifier.fillMaxWidth().height(170.dp).background(Color.White)) {
+            itemsIndexed(m.points) { k, p ->
+                val forced = plc.forces[p.tag]
+                val v = p.value(plc)
+                Row(
+                    Modifier.fillMaxWidth().height(22.dp).background(if (k % 2 == 0) Color.White else Color(0xFFF4F6F8))
+                        .drawBehind { drawLine(GridLine, Offset(0f, size.height), Offset(size.width, size.height), 1f) },
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Row(Modifier.weight(1.3f).fillMaxHeight().gridRight().padding(start = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Indicator(v, if (out) Color(0xFFE0A800) else Hmi.Ok, Color(0xFFC9CED3), 8)
+                        Text(" ${p.tag}", fontSize = 10.sp, fontFamily = FontFamily.Monospace, color = Hmi.Text, maxLines = 1)
+                    }
+                    GridCell(if (v) "1" else "0", Modifier.width(46.dp).background(if (forced != null) ForcedCell else Color.Transparent),
+                        end = true, bold = forced != null)
+                    GridCell(forced?.let { if (it) "1" else "0" } ?: ".", Modifier.width(66.dp), mono = true)
+                    GridCell("Decimal", Modifier.width(56.dp))
+                    GridCell("BOOL", Modifier.width(60.dp))
+                    GridCell(m.address(k), Modifier.weight(1.2f), mono = true, dim = true)
+                    if (forcible) Row(Modifier.width(112.dp).padding(horizontal = 3.dp), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                        if (p.forcible) {
+                            HmiButton("1", enabled = canForce, active = forced == true, activeColor = Hmi.Warn, fontSize = 9.sp, hPad = 8.dp) { plc.force(p.tag, true) }
+                            HmiButton("0", enabled = canForce, active = forced == false, activeColor = Hmi.Warn, fontSize = 9.sp, hPad = 8.dp) { plc.force(p.tag, false) }
+                            HmiButton("✕", enabled = canForce && forced != null, fontSize = 9.sp, hPad = 8.dp) { plc.force(p.tag, null) }
                         }
                     }
                 }
             }
         }
+        // Tabs along the bottom, as in the programming software.
+        Row(Modifier.fillMaxWidth().background(Color(0xFFE3E7EB)).padding(start = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.background(Color.White).border(1.dp, Color(0xFF9AA2AA)).padding(horizontal = 8.dp, vertical = 2.dp)) {
+                Text("Monitor Tags", fontSize = 9.sp, color = Hmi.Text, fontWeight = FontWeight.Bold)
+            }
+            Box(Modifier.padding(horizontal = 8.dp, vertical = 2.dp)) { Text("Edit Tags", fontSize = 9.sp, color = Hmi.Dim) }
+            Spacer(Modifier.weight(1f))
+            Text("Scope: RideController  ·  ${m.points.size} tags  ", fontSize = 9.sp, color = Hmi.Dim)
+        }
+    }
+}
+
+private fun Modifier.gridRight() = drawBehind { drawLine(GridLine, Offset(size.width, 0f), Offset(size.width, size.height), 1f) }
+
+@Composable
+private fun GridCell(
+    text: String, modifier: Modifier, header: Boolean = false, end: Boolean = false,
+    mono: Boolean = false, dim: Boolean = false, bold: Boolean = false,
+) {
+    Box(modifier.fillMaxHeight().gridRight().padding(horizontal = 4.dp), contentAlignment = if (end) Alignment.CenterEnd else Alignment.CenterStart) {
+        Text(
+            text, maxLines = 1, fontSize = if (header) 9.5.sp else 10.sp,
+            fontWeight = if (header || bold) FontWeight.Bold else FontWeight.Normal,
+            fontFamily = if (mono) FontFamily.Monospace else FontFamily.SansSerif,
+            color = if (header) Color(0xFF2B3238) else if (dim) Hmi.Dim else Hmi.Text,
+        )
     }
 }
 

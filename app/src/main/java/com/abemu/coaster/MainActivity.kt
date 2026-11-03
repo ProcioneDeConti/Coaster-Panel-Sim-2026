@@ -57,6 +57,7 @@ class MainActivity : ComponentActivity() {
         }
         setContent {
             MaterialTheme(colorScheme = darkColorScheme()) {
+                androidx.compose.runtime.LaunchedEffect(Unit) { com.abemu.coaster.ui.Boot.run() }
                 RideSounds(vm)
                 StationMusic(vm)
                 DeskPa(vm)

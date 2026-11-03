@@ -19,6 +19,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -69,6 +73,10 @@ object Night {
 }
 
 fun flasher(): Boolean = (System.currentTimeMillis() / 400) % 2 == 0L
+
+/** 0..1 lamp brightness: LEDs come up fast and decay a touch slower, so flashing lamps don't look digital. */
+@Composable
+fun lampFade(on: Boolean) = animateFloatAsState(if (on) 1f else 0f, tween(if (on) 60 else 150), label = "lamp")
 
 /** Engraved black legend plate under a device. */
 @Composable
@@ -139,27 +147,26 @@ private fun DrawScope.guardRing(r: Float, night: Boolean): Float {
  * The plastic operator cap: a short cylinder seen from slightly above. [travel] is 0 at rest, 1 fully pressed;
  * the side wall shrinks as the cap goes down. Illuminated caps are translucent and glow from the LED behind.
  */
-private fun DrawScope.buttonCap(capR: Float, base: Color, on: Boolean, illuminated: Boolean, travel: Float, night: Boolean) {
+private fun DrawScope.buttonCap(capR: Float, base: Color, light: Float, illuminated: Boolean, travel: Float, night: Boolean) {
     val depth = capR * (0.16f - 0.12f * travel)
     val face = center - Offset(0f, depth * 0.5f)
     // Shadow in the opening, then the cap's side wall.
     drawCircle(Color.Black.copy(alpha = 0.7f), capR * 1.02f, center + Offset(0f, depth * 0.6f))
     drawCircle(lerp(base, Color.Black, 0.55f), capR, face + Offset(0f, depth))
     // Face: lit from the top left, slightly dished (darker towards the middle, bright rim at the top).
-    val top = if (on) lerp(base, Color.White, 0.65f) else lerp(base, Color.White, 0.28f)
+    val top = lerp(base, Color.White, 0.28f + 0.37f * light)
     drawCircle(Brush.linearGradient(listOf(top, base, lerp(base, Color.Black, 0.3f)),
         face - Offset(capR, capR), face + Offset(capR, capR)), capR, face)
     if (illuminated) {
-        if (on) {
-            // LED behind the diffuser: a hot centre fading to the cap colour.
-            drawCircle(Brush.radialGradient(listOf(Color.White.copy(alpha = 0.85f), base.copy(alpha = 0.0f)), face, capR * 0.8f), capR * 0.8f, face)
-        } else {
-            // Unlit translucent cap: faint diffuser rings visible through it.
-            listOf(0.35f, 0.62f).forEach { f -> drawCircle(Color.White.copy(alpha = if (night) 0.03f else 0.07f), capR * f, face, style = Stroke(capR * 0.05f)) }
+        // LED behind the diffuser: a hot centre fading to the cap colour.
+        if (light > 0f) drawCircle(Brush.radialGradient(listOf(Color.White.copy(alpha = 0.85f * light), base.copy(alpha = 0.0f)), face, capR * 0.8f), capR * 0.8f, face)
+        // Unlit translucent cap: faint diffuser rings visible through it.
+        if (light < 1f) listOf(0.35f, 0.62f).forEach { f ->
+            drawCircle(Color.White.copy(alpha = (if (night) 0.03f else 0.07f) * (1f - light)), capR * f, face, style = Stroke(capR * 0.05f))
         }
     }
     drawCircle(Brush.radialGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.18f)), face, capR), capR, face)
-    drawArc(Color.White.copy(alpha = if (on) 0.6f else 0.38f), 200f, 75f, false, face - Offset(capR * 0.86f, capR * 0.86f),
+    drawArc(Color.White.copy(alpha = 0.38f + 0.22f * light), 200f, 75f, false, face - Offset(capR * 0.86f, capR * 0.86f),
         Size(capR * 1.72f, capR * 1.72f), style = Stroke(capR * 0.07f))
     drawCircle(Color.Black.copy(alpha = 0.45f), capR, face, style = Stroke(capR * 0.04f))
 }
@@ -183,6 +190,11 @@ fun PushButton(
 ) {
     var pressed by remember { mutableStateOf(false) }
     val cb by rememberUpdatedState(onChange)
+    // Cap snaps down, then springs back up with a little overshoot. Both values are read only in the
+    // draw lambda, so an animation frame redraws this device's layer without recomposing it.
+    val travel by animateFloatAsState(if (pressed) 1f else 0f,
+        if (pressed) tween(45) else spring(dampingRatio = 0.45f, stiffness = Spring.StiffnessMedium), label = "travel")
+    val lamp by lampFade((lit || Boot.lampTest) && illuminated)
     Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
         Canvas(
             Modifier
@@ -199,20 +211,17 @@ fun PushButton(
         ) {
             val r = this.size.minDimension / 2
             val night = Night.on
-            val on = lit && illuminated
+            val light = lamp
             deviceShadow(r)
-            if (on) {
+            if (light > 0f) {
                 val g = if (night) r * 1.8f else r * 1.25f
-                drawCircle(Brush.radialGradient(listOf(color.copy(alpha = if (night) 0.75f else 0.45f), Color.Transparent), center, g), g)
+                drawCircle(Brush.radialGradient(listOf(color.copy(alpha = (if (night) 0.75f else 0.45f) * light), Color.Transparent), center, g), g)
             }
             val hole = if (guarded) guardRing(r, night) else chromeBezel(r)
             if (night && !guarded) drawCircle(Color.Black.copy(alpha = 0.5f), r)
-            val base = when {
-                !illuminated -> lerp(color, Color.Black, if (night) 0.6f else 0f)
-                on -> color
-                else -> lerp(color, Color.Black, if (night) 0.82f else 0.55f)
-            }
-            buttonCap(hole * 0.9f, base, on, illuminated, if (pressed) 1f else 0f, night)
+            val base = if (!illuminated) lerp(color, Color.Black, if (night) 0.6f else 0f)
+                else lerp(lerp(color, Color.Black, if (night) 0.82f else 0.55f), color, light)
+            buttonCap(hole * 0.9f, base, light, illuminated, travel.coerceAtLeast(-0.25f), night)
         }
         Spacer(Modifier.height(4.dp))
         LegendPlate(legend, plateWidth)
@@ -225,22 +234,21 @@ fun PushButton(
  */
 @Composable
 fun PilotLight(legend: String, color: Color, lit: Boolean, modifier: Modifier = Modifier, size: Dp = 34.dp) {
+    val lamp by lampFade(lit || Boot.lampTest)
     Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
         Canvas(Modifier.graphicsLayer().size(size)) {
             val r = this.size.minDimension / 2
             val night = Night.on
+            val light = lamp
             deviceShadow(r)
-            if (lit) {
+            if (light > 0f) {
                 val g = r * (if (night) 2.2f else 1.45f)
-                drawCircle(Brush.radialGradient(listOf(color.copy(alpha = if (night) 0.85f else 0.55f), Color.Transparent), center, g), g)
+                drawCircle(Brush.radialGradient(listOf(color.copy(alpha = (if (night) 0.85f else 0.55f) * light), Color.Transparent), center, g), g)
             }
             val hole = chromeBezel(r)
             if (night) drawCircle(Color.Black.copy(alpha = 0.5f), r)
             val lens = hole * 0.94f
-            if (lit) {
-                drawCircle(Brush.radialGradient(listOf(Color.White, lerp(color, Color.White, 0.35f), color, lerp(color, Color.Black, 0.35f)),
-                    center, lens), lens)
-            } else {
+            if (light < 1f) {
                 val c = lerp(color, Color.Black, if (night) 0.85f else 0.62f)
                 drawCircle(Brush.radialGradient(listOf(lerp(c, color, 0.25f), c, lerp(c, Color.Black, 0.6f)),
                     center + Offset(lens * 0.1f, lens * 0.15f), lens), lens)
@@ -252,10 +260,14 @@ fun PilotLight(legend: String, color: Color, lit: Boolean, modifier: Modifier = 
                 }
                 drawCircle(lerp(c, color, 0.35f), lens * 0.09f)
             }
+            if (light > 0f) {
+                drawCircle(Brush.radialGradient(listOf(Color.White, lerp(color, Color.White, 0.35f), color, lerp(color, Color.Black, 0.35f)),
+                    center, lens), lens, alpha = light)
+            }
             // Fresnel rings moulded into the dome.
-            listOf(0.42f, 0.7f).forEach { f -> drawCircle(Color.White.copy(alpha = if (lit) 0.18f else 0.07f), lens * f, style = Stroke(lens * 0.04f)) }
+            listOf(0.42f, 0.7f).forEach { f -> drawCircle(Color.White.copy(alpha = 0.07f + 0.11f * light), lens * f, style = Stroke(lens * 0.04f)) }
             // Dome: darker rim, glossy highlight top left, small reflection bottom right.
-            drawCircle(Brush.radialGradient(listOf(Color.Transparent, Color.Black.copy(alpha = if (lit) 0.25f else 0.5f)), center, lens), lens)
+            drawCircle(Brush.radialGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.5f - 0.25f * light)), center, lens), lens)
             drawOval(Brush.linearGradient(listOf(Color.White.copy(alpha = 0.75f), Color.White.copy(alpha = 0f)),
                 center - Offset(lens * 0.6f, lens * 0.75f), center - Offset(lens * 0.05f, lens * 0.1f)),
                 center - Offset(lens * 0.62f, lens * 0.72f), Size(lens * 0.75f, lens * 0.5f))
@@ -280,6 +292,10 @@ fun EStopButton(
     val set by rememberUpdatedState(onSet)
     // Mushroom head twist while resetting, in degrees clockwise; springs back to 0 when let go.
     var twist by remember { mutableStateOf(0f) }
+    // Head drops when struck and pops back out with a bounce when twisted free.
+    val sink by animateFloatAsState(if (pressed) 1f else 0f,
+        if (pressed) tween(60) else spring(dampingRatio = 0.4f, stiffness = Spring.StiffnessMedium), label = "sink")
+    val lamp by lampFade((pressed && flasher()) || Boot.lampTest)
     Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
         Canvas(
             Modifier
@@ -320,15 +336,15 @@ fun EStopButton(
             drawCircle(Color(0xFFFFD200), r)
             drawCircle(Color(0xFF8A7000), r, style = Stroke(2f))
             drawCircle(Color(0xFF3A3A3A), r * 0.62f)
-            val head = if (pressed) r * 0.52f else r * 0.6f
-            val lit = pressed && flasher()
-            drawCircle(Color.Black.copy(alpha = 0.4f), head * 1.04f, center + Offset(3f, 5f))
-            if (lit) drawCircle(Brush.radialGradient(listOf(Color(0xCCFF2020), Color.Transparent), center, r * 0.95f), r * 0.95f)
-            if (Night.on && !lit) drawCircle(Color.Black.copy(alpha = 0.45f), r)
+            val head = r * (0.6f - 0.08f * sink)
+            val light = lamp
+            drawCircle(Color.Black.copy(alpha = 0.4f), head * 1.04f, center + Offset(3f, 5f) * (1f - 0.6f * sink))
+            if (light > 0f) drawCircle(Brush.radialGradient(listOf(Color(0xFFFF2020).copy(alpha = 0.8f * light), Color.Transparent), center, r * 0.95f), r * 0.95f)
+            if (Night.on) drawCircle(Color.Black.copy(alpha = 0.45f * (1f - light)), r)
             drawCircle(
                 Brush.radialGradient(
-                    if (lit) listOf(Color(0xFFFFD0D0), Color(0xFFFF3030), Color(0xFFB00000))
-                    else listOf(Color(0xFFFF7A7A), Color(0xFFD01010), Color(0xFF6E0000)),
+                    listOf(Color(0xFFFF7A7A), Color(0xFFD01010), Color(0xFF6E0000))
+                        .zip(listOf(Color(0xFFFFD0D0), Color(0xFFFF3030), Color(0xFFB00000))) { a, b -> lerp(a, b, light) },
                     center = Offset(center.x - head * 0.35f, center.y - head * 0.4f), radius = head * 1.6f,
                 ),
                 head,

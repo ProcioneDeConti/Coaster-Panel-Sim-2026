@@ -106,10 +106,10 @@ fun HmiTerminal(vm: SimViewModel, modifier: Modifier = Modifier) {
             Spacer(Modifier.width(8.dp))
             LayoutChip(vm)
         }
+        Box(Modifier.weight(1f).fillMaxWidth()) {
         Column(
             Modifier
-                .weight(1f)
-                .fillMaxWidth()
+                .fillMaxSize()
                 .background(Hmi.Screen)
                 .border(3.dp, Color.Black),
         ) {
@@ -137,6 +137,8 @@ fun HmiTerminal(vm: SimViewModel, modifier: Modifier = Modifier) {
                 }
                 if (showLogin) LoginPad(vm) { showLogin = false }
             }
+        }
+        BootSplash(vm, Modifier.matchParentSize().padding(3.dp))
         }
         androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxWidth().padding(top = 8.dp)) {
             val narrow = maxWidth < 760.dp
@@ -281,29 +283,99 @@ private fun TitleBar(vm: SimViewModel, page: HmiPage, onUser: () -> Unit) {
 private fun AlarmBanner(vm: SimViewModel, onClick: () -> Unit) {
     vm.frame.longValue
     val plc = vm.plc
-    val top = plc.alarms.firstOut ?: plc.alarms.active.firstOrNull()
+    val alarms = plc.alarms
+    val active = alarms.active
+    val top = alarms.firstOut ?: active.firstOrNull()
     val blink = flasher()
-    val (bg, txt) = when {
-        top == null -> Color(0xFFBFC4C9) to Hmi.Dim
-        !top.acked && blink -> sevColor(top.severity) to Color.White
-        !top.acked -> Color(0xFF4A1010) to Color.White
-        else -> sevColor(top.severity).copy(alpha = 0.85f) to Color.White
-    }
+    // Dark strip with the severity carried by an icon tile and a coloured edge, as on HMI alarm banners.
+    // Unacknowledged alarms flash the tile and edge; acknowledged ones go steady.
+    val sev = top?.let { sevColor(it.severity) }
+    val flashOn = top != null && (top.acked || blink)
     Row(
-        Modifier.fillMaxWidth().background(bg).clickable(onClick = onClick).padding(horizontal = 8.dp, vertical = 4.dp),
+        Modifier.fillMaxWidth().height(30.dp).background(if (top == null) Color(0xFF2A3038) else Color(0xFF16191D))
+            .drawWithContent {
+                drawContent()
+                if (sev != null) drawRect(if (flashOn) sev else sev.copy(alpha = 0.25f), size = androidx.compose.ui.geometry.Size(5.dp.toPx(), size.height))
+            }
+            .clickable(onClick = onClick).padding(start = 10.dp, end = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (top == null) {
-            Text(plc.statusText.ifEmpty { "No active alarms" }, color = txt, fontSize = 12.sp, maxLines = 1)
+            Box(Modifier.size(10.dp).background(Hmi.Ok, RoundedCornerShape(50)))
+            Text("  NO ACTIVE ALARMS", color = Color(0xFF9FE0B4), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            Text("   ${plc.statusText}", color = Color(0xFFB5BDC6), fontSize = 12.sp, maxLines = 1,
+                overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
         } else {
-            Text(top.since, color = txt, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
-            val fo = if (plc.alarms.isFirstOut(top)) "1ST OUT · " else ""
-            Text("  $fo${top.severity.label}  ", color = txt, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-            Text(top.text, color = txt, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-            val n = plc.alarms.active.size
-            if (n > 1) Text("+${n - 1} more", color = txt, fontSize = 11.sp)
+            SeverityIcon(top.severity, sev!!, flashOn)
+            Spacer(Modifier.width(8.dp))
+            Text(top.since, color = Color(0xFFB5BDC6), fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+            Spacer(Modifier.width(8.dp))
+            if (alarms.isFirstOut(top)) {
+                Box(Modifier.background(Color.White, RoundedCornerShape(3.dp)).padding(horizontal = 4.dp, vertical = 1.dp)) {
+                    Text("1ST OUT", color = Color.Black, fontSize = 9.sp, fontWeight = FontWeight.Black)
+                }
+                Spacer(Modifier.width(6.dp))
+            }
+            Text(top.severity.label, color = sev, fontSize = 11.sp, fontWeight = FontWeight.Black)
+            Spacer(Modifier.width(8.dp))
+            Text(top.text, color = Color.White, fontSize = 12.sp, fontWeight = if (top.acked) FontWeight.Normal else FontWeight.Bold,
+                maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+            val unacked = active.count { !it.acked }
+            BannerCount("UNACK", unacked, if (unacked > 0) Hmi.Bad else Color(0xFF4A525C))
+            BannerCount("ACTIVE", active.size, Color(0xFF4A525C))
+            if (unacked > 0) BannerKey("ACK") { alarms.acknowledgeAll() }
+            if (plc.hornActive) BannerKey("SILENCE") { alarms.silence(); alarms.acknowledgeAll() }
         }
     }
+}
+
+/** ISA-style severity glyph: octagon for stops, triangle for warnings, circle for info. */
+@Composable
+private fun SeverityIcon(s: Severity, color: Color, on: Boolean) {
+    val fill = if (on) color else color.copy(alpha = 0.3f)
+    Box(Modifier.size(20.dp), contentAlignment = Alignment.Center) {
+    androidx.compose.foundation.Canvas(Modifier.matchParentSize()) {
+        val w = size.width
+        val path = androidx.compose.ui.graphics.Path()
+        when (s) {
+            Severity.ESTOP, Severity.CSTOP -> {
+                val a = w * 0.29f
+                path.moveTo(a, 0f); path.lineTo(w - a, 0f); path.lineTo(w, a); path.lineTo(w, w - a)
+                path.lineTo(w - a, w); path.lineTo(a, w); path.lineTo(0f, w - a); path.lineTo(0f, a); path.close()
+                drawPath(path, fill)
+            }
+            Severity.WARNING -> {
+                path.moveTo(w / 2, w * 0.04f); path.lineTo(w, w * 0.94f); path.lineTo(0f, w * 0.94f); path.close()
+                drawPath(path, fill)
+            }
+            Severity.INFO -> drawCircle(fill)
+        }
+    }
+    Text(if (s == Severity.INFO) "i" else "!", color = if (s == Severity.WARNING) Color.Black else Color.White,
+        fontSize = 12.sp, lineHeight = 12.sp, fontWeight = FontWeight.Black,
+        modifier = if (s == Severity.WARNING) Modifier.padding(top = 4.dp) else Modifier)
+    }
+}
+
+@Composable
+private fun BannerCount(label: String, n: Int, bg: Color) {
+    Row(Modifier.padding(start = 6.dp).background(bg, RoundedCornerShape(3.dp)).padding(horizontal = 5.dp, vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically) {
+        Text(label, color = Color.White.copy(alpha = 0.8f), fontSize = 8.sp, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.width(4.dp))
+        Text("$n", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Black, fontFamily = FontFamily.Monospace)
+    }
+}
+
+@Composable
+private fun BannerKey(text: String, onClick: () -> Unit) {
+    Box(
+        Modifier.padding(start = 6.dp).height(22.dp)
+            .background(Brush.verticalGradient(listOf(Color(0xFF5C6670), Color(0xFF3A424B))), RoundedCornerShape(3.dp))
+            .border(1.dp, Color.Black, RoundedCornerShape(3.dp))
+            .clickable { Haptics.tick(); onClick() }.padding(horizontal = 9.dp),
+        contentAlignment = Alignment.Center,
+    ) { Text(text, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
 }
 
 @Composable
