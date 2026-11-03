@@ -24,6 +24,8 @@ private const val FADE_MS = 3_000f
 private const val STOP_FADE_MS = 1_500f
 /** Music level while a PA announcement plays. */
 private const val DUCK = 0.25f
+/** Music level while a radio call is on air: a slight dip so the call stands out. */
+private const val RADIO_DUCK = 0.6f
 private const val TICK_MS = 50L
 
 /**
@@ -69,7 +71,11 @@ fun StationMusic(vm: SimViewModel) {
             val left = (player.duration - player.currentPosition).toFloat()
             val fade = minOf(1f, pos / FADE_MS, left / FADE_MS).coerceIn(0f, 1f)
             // Duck smoothly (~0.5 s) rather than snapping when the PA starts or stops.
-            val target = if (PaBus.speaking) DUCK else 1f
+            val target = when {
+                PaBus.speaking -> DUCK
+                RadioState.onAir != null -> RADIO_DUCK
+                else -> 1f
+            }
             duck += (target - duck) * 0.1f
             return vm.volume * fade * duck
         }
