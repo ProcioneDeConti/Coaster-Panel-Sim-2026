@@ -33,7 +33,7 @@ VOICES = {
     "MAINT": "uFIXVu9mmnDZ7dTKCBTX",           # Justin Time: maintenance base
     "MAINT_UNIT": "T5cu6IU92Krx4mh43osx",      # Bill Oxley: maintenance tech in the field
     "AREA_LEAD": "cjVigY5qzO86Huf0OWal",       # Eric
-    "SECURITY": "pNInz6obpgDQGcFmaJgB",        # Adam
+    "SECURITY": "CeNX9CMwmxDxUF5Q2Inm",        # library voice picked by the user (replaced Adam, the TikTok narrator)
     "GUEST_SERVICES": "XrExE9yKIg1WjnnlVkGX",  # Matilda
     "FIRST_AID": "EXAVITQu4vr4xnSDxMaL",       # Sarah
     "FOOD_SERVICE": "iP95p4xoKVk53GoZ742B",    # Chris
@@ -42,6 +42,11 @@ VOICES = {
     "GAMES": "TX3LPaxmHKxFdv7VOQHJ",           # Liam
     "CUSTODIAL": "CwhRBWXzGAHq8TQ4Fs17",       # Roger
     "OP": "SAz9YHcvj6GT2YYXdXww",              # River: you, the coaster operator
+    # 2026-11 additions: Voice Library voices picked by the user, avoiding stock / TikTok-narration voices.
+    "GATE": "Mac2FKpSgaGIsaNRXt8A",            # Emma: front gate / admissions
+    "PARKING": "oOxgWK7hYRcDqjiZMSoX",         # Brian (Midwestern): parking & trams
+    "PARK_OPS": "6fLd3vCll0LutxnciLI8",        # Tiffany: park operations / weather desk
+    "OTHER_OP": "3LPKEa2TICTsITcoxL7H",        # Arthur: operators on other rides
 }
 MODEL = "eleven_multilingual_v2"
 RATE = 16000

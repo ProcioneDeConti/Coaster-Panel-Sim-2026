@@ -381,3 +381,233 @@ Drop tower to area lead. We're watching our anemometer, sitting about five under
 Area lead copies. Keep me posted.
 == chatter_w5 | ENTERTAINMENT | ENTERTAINMENT ==
 Entertainment to all units. We're pulling the parade balloons because of the wind.
+
+# ==================================================================== 2026-11 additions
+# New roles: GATE (front gate / admissions), PARKING (parking & trams), PARK_OPS (park operations / weather desk),
+# OTHER_OP (operators on other rides; the third field names the ride). Replies reuse existing clips where they fit
+# (e.g. chatter_43, "Security copies, on my way").
+
+# ---- Front gate ----
+== chatter_46 | GATE | FRONT GATE ==
+Front gate to all units. Turnstiles are open. Guests are on their way in.
+
+== chatter_47 | GATE | FRONT GATE ==
+Front gate to maintenance. The scanner on lane six keeps freezing up. Can somebody take a look?
+
+== chatter_48 | MAINT | MAINT BASE ==
+Maintenance copies the scanner. Sending someone from the shop.
+
+== chatter_49 | GATE | FRONT GATE ==
+Front gate to security. I have a dad here looking for his daughter. Eight years old, purple shirt, last seen by the carousel.
+
+== chatter_50 | SECURITY | SECURITY ==
+Security copies. All units, keep an eye out for an eight year old in a purple shirt, last seen near the carousel.
+
+== chatter_51 | GUEST_SERVICES | GUEST SERVICES ==
+Guest services to front gate. We have her here and she's fine. Send dad our way.
+
+== chatter_52 | GATE | FRONT GATE ==
+Front gate to guest services. School group of sixty coming through. Their chaperone will check in with you.
+
+== chatter_53 | GATE | FRONT GATE ==
+Front gate to security. Guest is trying to bring in a cooler. Can you come talk to them?
+
+# ---- Parking & trams ----
+== chatter_54 | PARKING | PARKING ==
+Parking to front gate. Tram two is down with a flat. We're running one tram on the main lot for now.
+
+== chatter_55 | GATE | FRONT GATE ==
+Front gate copies. We'll let guests know to expect a wait for the tram.
+
+== chatter_56 | PARKING | PARKING ==
+Parking to all units. Main lot is full. We're sending cars to the overflow lot by the marina.
+
+== chatter_57 | PARKING | PARKING ==
+Parking to maintenance. Guest needs a jump start in section E, row twelve. Can I borrow the jump pack?
+
+== chatter_58 | MAINT | MAINT BASE ==
+Base copies. Jump pack is on the bench, come grab it.
+
+== chatter_59 | PARKING | PARKING ==
+Parking to security. Guest locked their keys in the car with the dog inside, section C. It's getting warm out here.
+
+# ---- Park operations ----
+== chatter_60 | PARK_OPS | PARK OPS ==
+Park operations to all units. Heat index is ninety eight. Remind your crews to hydrate and rotate positions.
+
+== chatter_61 | PARK_OPS | PARK OPS ==
+Park operations to all ride supervisors. Daily inspection sheets are due to the office by noon.
+
+== chatter_62 | PARK_OPS | PARK OPS ==
+Park operations to all units. Attendance is tracking well over forecast. Plan for a heavy afternoon.
+
+== chatter_63 | PARK_OPS | PARK OPS ==
+Park operations to the coaster. Tour group coming by your exit in about twenty minutes. Business as usual.
+
+# ---- Other rides ----
+== chatter_64 | OTHER_OP | DROP TOWER ==
+Drop tower to the coaster. How's your line looking? We're a walk on over here.
+
+== chatter_65 | OTHER_OP | SCRAMBLER ==
+Scrambler to area lead. Requesting a breaker in about ten. My unload op has been out here since open.
+
+== chatter_66 | AREA_LEAD | AREA LEAD ==
+Area lead copies. Breaker is on the way.
+
+== chatter_67 | OTHER_OP | WAVE SWINGER ==
+Wave swinger to maintenance. Seat on gondola nine won't latch. We've taken it out of service.
+
+== chatter_68 | MAINT_UNIT | MAINT UNIT ==
+Unit two copies. I'll swing by right after the carousel.
+
+== chatter_69 | OTHER_OP | BUMPER CARS ==
+Bumper cars to maintenance. Car eleven isn't picking up power from the floor.
+
+== chatter_70 | MAINT_UNIT | MAINT UNIT ==
+Unit four copies. I'll bring a new pickup shoe.
+
+== chatter_71 | OTHER_OP | PIRATE SHIP ==
+Pirate ship to area lead. Guest in the back row won't stay seated. Holding the cycle until they do.
+
+== chatter_72 | AREA_LEAD | AREA LEAD ==
+Area lead copies. Heading your way.
+
+== chatter_73 | OTHER_OP | LOG FLUME ==
+Log flume to the coaster. You're loud today. We can hear your lift from our station.
+
+== chatter_74 | RIDE_OPS | RIDE OPS ==
+Train ride to area lead. Engine's taking on water at the depot. We'll be down about fifteen minutes.
+
+# ---- Filling out the rest of the park ----
+== chatter_75 | AREA_LEAD | AREA LEAD ==
+Area lead to all ride ops. Lunch breaks start at eleven thirty. Check the board for your times.
+
+== chatter_76 | GAMES | GAMES ==
+Games to cash control. Ring toss needs a change run. We're out of ones.
+
+== chatter_77 | GAMES | GAMES ==
+Games to warehouse. Somebody won the big banana again. We're out of large prizes at the basketball stand.
+
+== chatter_78 | GAMES | GAMES ==
+Games to security. Guest is upset about the dart game. Can you send someone over to help?
+
+== chatter_79 | CUSTODIAL | CUSTODIAL ==
+Custodial to area lead. Spill on the coaster exit ramp. Coning it off for a few minutes.
+
+== chatter_80 | CUSTODIAL | CUSTODIAL ==
+Custodial to guest services. Found a backpack under a bench by the arcade. Bringing it to lost and found.
+
+== chatter_81 | FIRST_AID | FIRST AID ==
+First aid to the coaster. Heads up, we're walking a guest out through your exit. Nothing serious.
+
+== chatter_82 | FIRST_AID | FIRST AID ==
+First aid to guest services. Guest with the bee sting is all set. Sending them back out to the park.
+
+== chatter_83 | FOOD_SERVICE | FOOD SERVICE ==
+Food service to area lead. Pizza stand by the coaster is closed for a delivery. Back in fifteen.
+
+== chatter_84 | FOOD_SERVICE | FOOD SERVICE ==
+Food service to maintenance. Fryer two is down at the burger stand. Can somebody take a look when you have a minute?
+
+== chatter_85 | MAINT | MAINT BASE ==
+Maintenance copies the fryer. We'll get to it after the coaster.
+
+== chatter_86 | ENTERTAINMENT | ENTERTAINMENT ==
+Entertainment to all units. Parade steps off from the front gate in ten minutes. Keep the route clear.
+
+== chatter_87 | ENTERTAINMENT | ENTERTAINMENT ==
+Entertainment to custodial. Confetti cannon went off early by the bandstand. Sorry about that.
+
+== chatter_88 | CUSTODIAL | CUSTODIAL ==
+Custodial copies. We'll sweep it up.
+
+# ---- Night (more) ----
+== chatter_n8 | GATE | FRONT GATE ==
+Front gate to all units. Park closes in one hour. Last entry is now.
+
+== chatter_n9 | PARKING | PARKING ==
+Parking to all units. Lot lights are on. Trams run until thirty minutes after close.
+
+== chatter_n10 | PARK_OPS | PARK OPS ==
+Park operations to all ride supervisors. Close on time tonight. Last riders at the posted close, no exceptions.
+
+== chatter_n11 | OTHER_OP | DROP TOWER ==
+Drop tower to area lead. Our strobes aren't firing tonight. Still good to run, it just looks dark up top.
+
+== chatter_n12 | AREA_LEAD | AREA LEAD ==
+Area lead copies. Keep running, we'll get electrical out after close.
+
+== chatter_n13 | CUSTODIAL | CUSTODIAL ==
+Custodial to all units. Night crew is on. Please bag your trash at the end of your shift.
+
+== chatter_n14 | OTHER_OP | CAROUSEL ==
+Carousel to area lead. Last ride is done. Shutting down and covering the band organ.
+
+== chatter_n15 | GATE | FRONT GATE ==
+Front gate to all units. Turnstiles are locked. Exit only from here on.
+
+# ---- Long line (more) ----
+== chatter_b6 | GATE | FRONT GATE ==
+Front gate to park operations. Lines are back to the parking lot. We're opening the extra lanes.
+
+== chatter_b7 | PARK_OPS | PARK OPS ==
+Park operations copies. Sending two more scanners your way.
+
+== chatter_b8 | PARKING | PARKING ==
+Parking to all units. Overflow lot is full. We're turning cars away at the toll plaza.
+
+== chatter_b9 | PARK_OPS | PARK OPS ==
+Park operations to all rides. Run max trains and max capacity until further notice.
+
+== chatter_b10 | OTHER_OP | SCRAMBLER ==
+Scrambler to the coaster. Sending you our extra grouper. You need them more than we do.
+
+== chatter_b11 | FOOD_SERVICE | FOOD SERVICE ==
+Food service to area lead. Lemonade stand is out of cups. We'll be closed about ten minutes.
+
+== chatter_b12 | PARKING | PARKING ==
+Parking to front gate. Hotel shuttle just dropped a full load. About eighty guests headed your way.
+
+# ---- Windy (more) ----
+== chatter_w6 | PARK_OPS | PARK OPS ==
+Park operations to all units. Sustained winds at twenty, gusting thirty. High rides, watch your anemometers.
+
+== chatter_w7 | OTHER_OP | WAVE SWINGER ==
+Wave swinger to area lead. We've hit our wind limit. Unloading and closing until it calms down.
+
+== chatter_w8 | AREA_LEAD | AREA LEAD ==
+Area lead copies. Let me know when you reopen.
+
+== chatter_w9 | PARKING | PARKING ==
+Parking to maintenance. Wind brought the lot entrance banner down. It's on the ground by lane two.
+
+== chatter_w10 | GATE | FRONT GATE ==
+Front gate to all units. Hats are blowing off at the turnstiles. Remind your riders to secure loose articles.
+
+# ---- Storm approaching (lightning detected, no hold yet) ----
+== chatter_s1 | PARK_OPS | PARK OPS ==
+Park operations to all units. Lightning detected at twenty miles and closing. Be ready to hold on my call.
+
+== chatter_s2 | PARK_OPS | PARK OPS ==
+Park operations to all units. Lightning at fifteen miles. Water rides and high rides, prepare to unload.
+
+== chatter_s3 | GATE | FRONT GATE ==
+Front gate to guest services. Guests are asking about rain checks. What should we tell them?
+
+== chatter_s4 | GUEST_SERVICES | GUEST SERVICES ==
+Guest services to front gate. No rain checks unless the park closes. Point them to ponchos in the gift shop.
+
+== chatter_s5 | PARKING | PARKING ==
+Parking to all units. Trams are pulling in until the lightning passes. Guests in the lot, hold under the canopy.
+
+== chatter_s6 | OTHER_OP | LOG FLUME ==
+Log flume to area lead. We're unloading early. The sky's looking bad to the west.
+
+== chatter_s7 | AREA_LEAD | AREA LEAD ==
+Area lead copies. Good call.
+
+== chatter_s8 | CUSTODIAL | CUSTODIAL ==
+Custodial to area lead. Bringing in the patio umbrellas before the storm hits.
+
+== chatter_s9 | PARK_OPS | PARK OPS ==
+Park operations to all units. All clear on lightning at thirty miles. Resume normal operations.
