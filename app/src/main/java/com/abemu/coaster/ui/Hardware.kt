@@ -67,7 +67,8 @@ object Lens {
 }
 
 /** Shared 2.5 Hz flasher, like a PLC flasher bit. */
-/** Night operation: the console dims and lit lenses glow; the HMI backlight dims; the plan view shows track lighting. */
+/** Night operation: the console stays under its overhead light and lit lenses glow harder; the HMI bezel goes dark
+ *  while the backlit screen glows; the plan view shows track lighting. */
 object Night {
     var on by androidx.compose.runtime.mutableStateOf(false)
 }
@@ -340,7 +341,6 @@ fun EStopButton(
             val light = lamp
             drawCircle(Color.Black.copy(alpha = 0.4f), head * 1.04f, center + Offset(3f, 5f) * (1f - 0.6f * sink))
             if (light > 0f) drawCircle(Brush.radialGradient(listOf(Color(0xFFFF2020).copy(alpha = 0.8f * light), Color.Transparent), center, r * 0.95f), r * 0.95f)
-            if (Night.on) drawCircle(Color.Black.copy(alpha = 0.45f * (1f - light)), r)
             drawCircle(
                 Brush.radialGradient(
                     listOf(Color(0xFFFF7A7A), Color(0xFFD01010), Color(0xFF6E0000))
@@ -469,7 +469,7 @@ fun PanelSection(title: String, modifier: Modifier = Modifier, accent: Color = S
     // Coloured outline with the legend on a filled tab down the left edge, reading bottom to top.
     val shape = RoundedCornerShape(12.dp)
     val tabShape = RoundedCornerShape(topStart = 12.dp, bottomStart = 12.dp)
-    val edge = if (Night.on) lerp(accent, Color.Black, 0.45f) else accent
+    val edge = accent
     Box(modifier.border(2.dp, edge, shape)) {
         // The tab takes the section's height from its contents (no intrinsics: they break inside the scrolling console).
         Box(Modifier.matchParentSize()) {
@@ -507,7 +507,7 @@ fun SteelLabel(text: String, modifier: Modifier = Modifier) {
             .graphicsLayer()
             .background(
                 Brush.verticalGradient(listOf(Color(0xFFE4E7EA), Color(0xFFB9BEC3), Color(0xFFD3D7DB), Color(0xFFA9AEB4))
-                    .map { if (Night.on) lerp(it, Color.Black, 0.6f) else it }),
+                ),
                 RoundedCornerShape(2.dp),
             )
             .border(1.dp, Color(0xFF6E747A), RoundedCornerShape(2.dp))

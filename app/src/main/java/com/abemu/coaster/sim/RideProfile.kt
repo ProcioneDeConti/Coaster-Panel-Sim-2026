@@ -112,7 +112,11 @@ class RideProfile(
     }
     val rows get() = spec.cars
     val ridersPerTrain get() = spec.cars * spec.ridersPerCar
-    val trainLength get() = spec.cars * 2.0 + 2.0
+    /** Riders sent per dispatch: a paired station dispatches two trains at once. */
+    val ridersPerDispatch get() = ridersPerTrain * (if (spec.pairedStation) 2 else 1)
+    /** Dispatch interval that delivers [CoasterSpec.ratedCapacity], whole seconds. */
+    val ratedInterval: Double get() = Math.round(3600.0 * ridersPerDispatch / spec.ratedCapacity.coerceAtLeast(1)).toDouble()
+    val trainLength get() = spec.trainLengthM
     /**
      * Lowest launch exit speed that carries a train over the top hat against a steady [headwind] (m/s), found by
      * running the climb with the plant's free-rolling physics (gravity, rolling resistance, drag on the airspeed).

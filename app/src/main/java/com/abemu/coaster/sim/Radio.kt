@@ -31,6 +31,7 @@ class RadioDesk {
     private var prevLightning = false
     private var prevArmed = false
     private var stackCalled = false
+    private var prevStorm = false
     private var lastHistory = 0L
     private var chatterT = 120.0
     private val chatterBag = mutableListOf<List<Pair<String, Double>>>()
@@ -71,8 +72,9 @@ class RadioDesk {
         pending += Pending(t + delay, clip)
     }
 
-    /** [night], [postedWaitMin] and [windMph] steer which park chatter fits the moment. */
-    fun update(dt: Double, plc: RidePlc, on: Boolean, night: Boolean = false, postedWaitMin: Int = 0, windMph: Double = 0.0) {
+    /** [night], [postedWaitMin], [windMph] and [storm] (lightning on the detector) steer which park chatter fits the moment. */
+    fun update(dt: Double, plc: RidePlc, on: Boolean, night: Boolean = false, postedWaitMin: Int = 0, windMph: Double = 0.0,
+               storm: Boolean = false) {
         t += dt
         if (plc !== plcRef) {
             plcRef = plc
@@ -157,13 +159,17 @@ class RadioDesk {
             lastHistory = plc.alarms.historyVersion
             if (plc.alarms.history.firstOrNull()?.code == "CHECK") say("belt", 8.0, 120.0)
         }
+        // Park ops gives the all-clear once the detector has been quiet (the lightning hold has its own calls).
+        if (prevStorm && !storm && running && !plc.weather.hold) say("chatter_s9", 20.0, 600.0)
+        prevStorm = storm
         // General park chatter while the ride is up and nothing is wrong.
         if (running && !faulted && pending.isEmpty()) {
             chatterT -= dt
             if (chatterT <= 0) {
                 chatterT = 150 + Math.random() * 270
                 // Half the time, pick something that fits the moment (night, a long line, a windy day).
-                val moods = listOfNotNull("night".takeIf { night }, "busy".takeIf { postedWaitMin >= 45 }, "windy".takeIf { windMph >= 18 })
+                val moods = listOfNotNull("night".takeIf { night }, "busy".takeIf { postedWaitMin >= 45 }, "windy".takeIf { windMph >= 18 },
+                    "storm".takeIf { storm && !plc.weather.hold })
                 val mood = moods.randomOrNull()?.takeIf { Math.random() < 0.5 }
                 val bag = if (mood != null) contextBags.getOrPut(mood) { mutableListOf() } else chatterBag
                 if (bag.isEmpty()) bag += (if (mood != null) CONTEXT_CHATTER.getValue(mood) else CHATTER).shuffled()
@@ -187,16 +193,39 @@ class RadioDesk {
             listOf("chatter_42" to 0.0, "chatter_43" to 1.0),
             listOf("chatter_20" to 0.0, "chatter_21" to 1.0),
             listOf("chatter_23" to 0.0, "chatter_24" to 2.0),
-        ) + listOf(5, 6, 8, 11, 12, 13, 14, 15, 18, 19, 22, 25, 26, 28, 29, 30, 31, 32, 33, 36, 39, 44)
+            // 2026-11: front gate, parking, park ops and other rides. chatter_43 is Security's "copies, on my way".
+            listOf("chatter_47" to 0.0, "chatter_48" to 1.5),
+            listOf("chatter_49" to 0.0, "chatter_50" to 1.5, "chatter_51" to 180.0),
+            listOf("chatter_53" to 0.0, "chatter_43" to 1.5),
+            listOf("chatter_54" to 0.0, "chatter_55" to 1.5),
+            listOf("chatter_57" to 0.0, "chatter_58" to 1.5),
+            listOf("chatter_59" to 0.0, "chatter_43" to 1.5),
+            listOf("chatter_65" to 0.0, "chatter_66" to 1.5),
+            listOf("chatter_67" to 0.0, "chatter_68" to 1.5),
+            listOf("chatter_69" to 0.0, "chatter_70" to 1.5),
+            listOf("chatter_71" to 0.0, "chatter_72" to 1.5),
+            listOf("chatter_78" to 0.0, "chatter_43" to 1.5),
+            listOf("chatter_84" to 0.0, "chatter_85" to 1.5),
+            listOf("chatter_87" to 0.0, "chatter_88" to 1.5),
+        ) + (listOf(5, 6, 8, 11, 12, 13, 14, 15, 18, 19, 22, 25, 26, 28, 29, 30, 31, 32, 33, 36, 39, 44) +
+            listOf(46, 52, 56, 60, 61, 62, 63, 64, 73, 74, 75, 76, 77, 79, 80, 81, 82, 83, 86))
             .map { listOf("chatter_$it" to 0.0) }
 
         private val CONTEXT_CHATTER: Map<String, List<List<Pair<String, Double>>>> = mapOf(
             "night" to listOf(listOf("chatter_n1" to 0.0), listOf("chatter_n2" to 0.0), listOf("chatter_n3" to 0.0),
-                listOf("chatter_n4" to 0.0), listOf("chatter_n5" to 0.0), listOf("chatter_n6" to 0.0, "chatter_n7" to 1.5)),
+                listOf("chatter_n4" to 0.0), listOf("chatter_n5" to 0.0), listOf("chatter_n6" to 0.0, "chatter_n7" to 1.5),
+                listOf("chatter_n8" to 0.0), listOf("chatter_n9" to 0.0), listOf("chatter_n10" to 0.0),
+                listOf("chatter_n11" to 0.0, "chatter_n12" to 1.5), listOf("chatter_n13" to 0.0), listOf("chatter_n14" to 0.0),
+                listOf("chatter_n15" to 0.0)),
             "busy" to listOf(listOf("chatter_b1" to 0.0), listOf("chatter_b2" to 0.0), listOf("chatter_b3" to 0.0, "chatter_b4" to 1.5),
-                listOf("chatter_b5" to 0.0)),
+                listOf("chatter_b5" to 0.0), listOf("chatter_b6" to 0.0, "chatter_b7" to 1.5), listOf("chatter_b8" to 0.0),
+                listOf("chatter_b9" to 0.0), listOf("chatter_b10" to 0.0), listOf("chatter_b11" to 0.0), listOf("chatter_b12" to 0.0)),
             "windy" to listOf(listOf("chatter_w1" to 0.0), listOf("chatter_w2" to 0.0), listOf("chatter_w3" to 0.0, "chatter_w4" to 1.5),
-                listOf("chatter_w5" to 0.0)),
+                listOf("chatter_w5" to 0.0), listOf("chatter_w6" to 0.0), listOf("chatter_w7" to 0.0, "chatter_w8" to 1.5),
+                listOf("chatter_w9" to 0.0), listOf("chatter_w10" to 0.0)),
+            // Lightning on the detector but no hold yet (chatter_s9, the all-clear, is played when it goes quiet).
+            "storm" to listOf(listOf("chatter_s1" to 0.0), listOf("chatter_s2" to 0.0), listOf("chatter_s3" to 0.0, "chatter_s4" to 1.5),
+                listOf("chatter_s5" to 0.0), listOf("chatter_s6" to 0.0, "chatter_s7" to 1.5), listOf("chatter_s8" to 0.0)),
         )
 
         private val COPY = Reply("COPY", "op_copy")
@@ -221,6 +250,11 @@ class RadioDesk {
             "storm_advise" to listOf(COPY),
             "chatter_b1" to listOf(Reply("POSTED WAIT IS ACCURATE", "op_line")),
             "chatter_44" to listOf(COPY),
+            "chatter_63" to listOf(COPY),
+            "chatter_64" to listOf(COPY),
+            "chatter_73" to listOf(COPY),
+            "chatter_81" to listOf(COPY),
+            "chatter_b10" to listOf(COPY),
         )
 
         /** Calls the operator can make at any time. */

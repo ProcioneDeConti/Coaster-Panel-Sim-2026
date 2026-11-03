@@ -57,7 +57,7 @@ fun OperatorConsole(vm: SimViewModel, modifier: Modifier = Modifier) {
 
     Column(
         modifier
-            .background(Brush.verticalGradient(if (Night.on) listOf(Color(0xFF14171A), Color(0xFF0A0B0D)) else listOf(Color(0xFF3A3F45), Color(0xFF26292D))))
+            .background(Brush.verticalGradient(listOf(Color(0xFF3A3F45), Color(0xFF26292D))))
             .brushedMetal()
             .padding(10.dp)
             .verticalScroll(rememberScrollState()),
@@ -116,7 +116,7 @@ fun OperatorConsole(vm: SimViewModel, modifier: Modifier = Modifier) {
                     { inp.controlledStop = it }, size = 62.dp, plateWidth = pw)
                 // Divider, then the maintenance / critical-function group on a red field.
                 Box(Modifier.width(2.dp).height(96.dp).background(Color(0xFF15171A)))
-                Row(Modifier.weight(1f).background(SectionRed.copy(alpha = if (Night.on) 0.3f else 0.55f), RoundedCornerShape(8.dp))
+                Row(Modifier.weight(1f).background(SectionRed.copy(alpha = 0.55f), RoundedCornerShape(8.dp))
                     .border(1.dp, SectionRed, RoundedCornerShape(8.dp)).padding(vertical = 6.dp),
                     horizontalArrangement = Arrangement.SpaceEvenly) {
                 PushButton("FAULT\nRESET", Lens.Blue, powered && plc.resetNeeded && blink,
@@ -189,7 +189,7 @@ private fun OperatorStand(
 ) {
     Column(
         Modifier
-            .background(if (Night.on) Color(0xFF15181B) else Color(0xFF2F3338), RoundedCornerShape(6.dp))
+            .background(Color(0xFF2F3338), RoundedCornerShape(6.dp))
             .border(1.dp, Color(0xFF6A7178), RoundedCornerShape(6.dp))
             .padding(6.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -290,7 +290,7 @@ private fun Modifier.brushedMetal() = drawWithCache {
             val x0 = rnd.nextFloat() * w * 1.2f - w * 0.2f
             val len = w * (0.15f + rnd.nextFloat() * 0.6f)
             val light = rnd.nextBoolean()
-            val a = (0.02f + rnd.nextFloat() * 0.05f) * if (night) 0.4f else 1f
+            val a = 0.02f + rnd.nextFloat() * 0.05f
             paint.color = (if (light) Color.White else Color.Black).copy(alpha = a)
             paint.strokeWidth = 1f
             canvas.drawLine(Offset(x0, y), Offset(x0 + len, y), paint)
@@ -300,7 +300,14 @@ private fun Modifier.brushedMetal() = drawWithCache {
     onDrawBehind {
         drawImage(bmp)
         // Soft sheen band across the upper part of the plate.
-        drawRect(Brush.verticalGradient(listOf(Color.Transparent, Color.White.copy(alpha = if (night) 0.01f else 0.035f), Color.Transparent),
+        drawRect(Brush.verticalGradient(listOf(Color.Transparent, Color.White.copy(alpha = 0.035f), Color.Transparent),
             0f, size.height * 0.5f))
+        if (night) {
+            // The booth's overhead light stays on: a warm pool over the upper plate, falling off into the dark
+            // toward the bottom corners. Drawn behind the devices, so lamps and labels are unaffected.
+            val c = Offset(size.width / 2, size.height * 0.2f)
+            val rad = maxOf(size.width, size.height) * 0.95f
+            drawRect(Brush.radialGradient(0f to Color(0x1AFFE2B0), 0.45f to Color.Transparent, 1f to Color(0x99000000), center = c, radius = rad))
+        }
     }
 }

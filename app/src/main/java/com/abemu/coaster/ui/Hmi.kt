@@ -28,7 +28,9 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -96,17 +98,16 @@ fun HmiTerminal(vm: SimViewModel, modifier: Modifier = Modifier) {
 
     Column(
         modifier
-            .background(BezelBrush)
-            // Night: the PanelView backlight is turned down and the bezel sits in the dark.
-            .drawWithContent { drawContent(); if (Night.on) drawRect(Color(0xFF000610).copy(alpha = 0.55f)) }
+            .background(if (Night.on) NightBezelBrush else BezelBrush)
             .padding(10.dp),
     ) {
-        Row(Modifier.padding(bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.padding(bottom = 8.dp).nightShade(), verticalAlignment = Alignment.CenterVertically) {
             BezelHeader(Modifier.weight(1f))
             Spacer(Modifier.width(8.dp))
             LayoutChip(vm)
         }
-        Box(Modifier.weight(1f).fillMaxWidth()) {
+        // Night: the bezel sits in the dark but the backlit screen stays bright and spills a soft glow onto it.
+        Box(Modifier.weight(1f).fillMaxWidth().drawBehind { if (Night.on) screenGlow() }) {
         Column(
             Modifier
                 .fillMaxSize()
@@ -140,7 +141,7 @@ fun HmiTerminal(vm: SimViewModel, modifier: Modifier = Modifier) {
         }
         BootSplash(vm, Modifier.matchParentSize().padding(3.dp))
         }
-        androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxWidth().padding(top = 8.dp)) {
+        androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxWidth().padding(top = 8.dp).nightShade()) {
             val narrow = maxWidth < 760.dp
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(if (narrow) 4.dp else 6.dp)) {
                 HmiPage.entries.filter { it != HmiPage.EDITOR && it != HmiPage.BUILDER }.forEach { p ->
@@ -153,6 +154,21 @@ fun HmiTerminal(vm: SimViewModel, modifier: Modifier = Modifier) {
 
 private val BrandBlue = Color(0xFF1F5AA8)
 private val BezelBrush = Brush.verticalGradient(listOf(Color(0xFFD3D7DB), Color(0xFFB9BEC3)))
+private val NightBezelBrush = Brush.verticalGradient(listOf(Color(0xFF3A3E43), Color(0xFF2A2D31)))
+
+/** Bezel furniture (nameplate, function keys) in the dark booth: unlit, so shaded; the screen itself is not. */
+private fun Modifier.nightShade() = drawWithContent { drawContent(); if (Night.on) drawRect(Color(0xFF02060C).copy(alpha = 0.5f)) }
+
+/** Backlight bleed: a few widening, fading rounded rects around the screen in its cool white. */
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.screenGlow() {
+    val steps = 8
+    val reach = 14.dp.toPx()
+    for (k in steps downTo 1) {
+        val g = reach * k / steps
+        drawRoundRect(Color(0xFFCFE3FF).copy(alpha = 0.05f), Offset(-g, -g), androidx.compose.ui.geometry.Size(size.width + 2 * g, size.height + 2 * g),
+            androidx.compose.ui.geometry.CornerRadius(g, g))
+    }
+}
 
 /** PanelView-style nameplate: blue-outlined strip, oval logo, brand name, and model in a pill on a blue band. */
 @Composable

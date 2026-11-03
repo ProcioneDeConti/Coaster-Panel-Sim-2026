@@ -16,6 +16,7 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.em
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -56,7 +57,12 @@ class MainActivity : ComponentActivity() {
             systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         }
         setContent {
-            MaterialTheme(colorScheme = darkColorScheme()) {
+            // Material's bodyLarge fixes line height at 24sp whatever the font size, which double-spaces the
+            // small HMI text; scale it with the font instead.
+            val type = androidx.compose.material3.Typography().let { t ->
+                t.copy(bodyLarge = t.bodyLarge.copy(lineHeight = 1.4.em))
+            }
+            MaterialTheme(colorScheme = darkColorScheme(), typography = type) {
                 androidx.compose.runtime.LaunchedEffect(Unit) { com.abemu.coaster.ui.Boot.run() }
                 RideSounds(vm)
                 StationMusic(vm)

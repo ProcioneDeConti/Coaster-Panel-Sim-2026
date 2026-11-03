@@ -20,7 +20,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.drawText
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -77,8 +84,10 @@ private fun QueueFrame(vm: SimViewModel, instructor: Boolean) {
         }
         ValueBox("Actual wait for a guest joining now", "${q.estimateWaitMin(plc)} min")
         ValueBox("Riders / hour (last 15 min)", "${q.ridersPerHour}")
-        val seats = plc.profile.ridersPerTrain
-        ValueBox("Theoretical capacity at target", "${(3600 / plc.dispatchTarget * seats).toInt()} /h  (${seats} seats @ ${plc.dispatchTarget.toInt()} s)")
+        val seats = plc.profile.ridersPerDispatch
+        ValueBox("Rated capacity", "${plc.profile.spec.ratedCapacity} /h  (${seats} seats every ${mss(plc.profile.ratedInterval)})")
+        if (plc.targetScale != 1.0)
+            ValueBox("Capacity at instructor target", "${(3600 / plc.dispatchTarget * seats).toInt()} /h  (@ ${mss(plc.dispatchTarget)})")
         ValueBox("Last train", if (q.lastLoad.second == 0) "—" else "${q.lastLoad.first} / ${q.lastLoad.second} seats")
         ValueBox("Riders today", "${q.riders}")
         ValueBox("Trains held on the brakes now / stack-ups", "${plc.stackedTrains} / ${plc.stackEvents}")
@@ -159,19 +168,47 @@ private fun WeatherFrame(vm: SimViewModel, instructor: Boolean) {
         }
         HmiLabel("— hold limit ${wx.windLimitMph.toInt()} mph   - - all-clear below ${(wx.windLimitMph - 5).toInt()} mph", 9.sp, color = Hmi.Dim)
 
+        val tm = rememberTextMeasurer(cacheSize = 8)
         // Wind vane and what the wind does to a launch.
         Row(verticalAlignment = Alignment.CenterVertically) {
             Canvas(Modifier.size(96.dp)) {
                 val c = Offset(size.width / 2, size.height / 2)
                 val r = size.minDimension / 2 - 10
-                drawCircle(Color(0xFF1B2229), r + 8, c)
+                drawCircle(Brush.radialGradient(listOf(Color(0xFF26313B), Color(0xFF141A20)), c, r + 8), r + 8, c)
                 drawCircle(Color(0xFF55606A), r, c, style = Stroke(1.5f))
+                // Bezel: a tick every 10°, longer every 30°, cardinal letters inside.
+                for (k in 0 until 36) {
+                    val a = Math.toRadians(k * 10.0)
+                    val u = Offset(sin(a).toFloat(), -cos(a).toFloat())
+                    val len = if (k % 3 == 0) 6.dp.toPx() else 3.dp.toPx()
+                    drawLine(Color(0xFF7D8892), c + u * r, c + u * (r - len), if (k % 9 == 0) 2f else 1f)
+                }
+                listOf("N" to 0.0, "E" to 90.0, "S" to 180.0, "W" to 270.0).forEach { (t, deg) ->
+                    val a = Math.toRadians(deg)
+                    val l = tm.measure(t, TextStyle(color = if (t == "N") Color(0xFFEF5350) else Color(0xFFB0BEC5), fontSize = 8.sp, fontWeight = FontWeight.Bold))
+                    val at = c + Offset(sin(a).toFloat(), -cos(a).toFloat()) * (r - 13.dp.toPx())
+                    drawText(l, topLeft = at - Offset(l.size.width / 2f, l.size.height / 2f))
+                }
                 val th = Math.toRadians(w.dirDeg)
                 // Arrow points downwind, from the side the wind comes from.
-                val from = c + Offset((r * sin(th)).toFloat(), (-r * cos(th)).toFloat())
-                val to = c - Offset((r * 0.6 * sin(th)).toFloat(), (-r * 0.6 * cos(th)).toFloat())
-                drawLine(Color(0xFF64B5F6), from, to, 4f)
-                drawCircle(Color(0xFF64B5F6), 5f, to)
+                val u = Offset(sin(th).toFloat(), -cos(th).toFloat())
+                val from = c + u * r
+                val to = c - u * (r * 0.62f)
+                val n = Offset(-u.y, u.x)
+                drawLine(Color(0xFF64B5F6), from, to + u * 8.dp.toPx(), 3f, StrokeCap.Round)
+                drawPath(Path().apply {
+                    moveTo(to.x, to.y)
+                    val b = to + u * 9.dp.toPx()
+                    lineTo((b + n * 4.dp.toPx()).x, (b + n * 4.dp.toPx()).y)
+                    lineTo((b - n * 4.dp.toPx()).x, (b - n * 4.dp.toPx()).y)
+                    close()
+                }, Color(0xFF64B5F6))
+                // Tail feathers on the windward end.
+                for (f in 0..1) {
+                    val q = from - u * (f * 5.dp.toPx())
+                    drawLine(Color(0xFF64B5F6), q, q + (n - u) * 4.dp.toPx(), 2f)
+                }
+                drawCircle(Color(0xFFCFD8DC), 2.5f, c)
                 val plc = vm.plc
                 if (plc.profile.type == com.abemu.coaster.sim.ProfileType.LAUNCH) {
                     val a = plc.profile.planPoint(plc.profile.launchStart)
@@ -199,17 +236,29 @@ private fun WeatherFrame(vm: SimViewModel, instructor: Boolean) {
             Canvas(Modifier.size(150.dp)) {
                 val c = Offset(size.width / 2, size.height / 2)
                 val r20 = size.minDimension / 2 - 4
-                drawCircle(Color(0xFF1B2229), r20, c)
-                drawCircle(Color(0xFF55606A), r20, c, style = Stroke(1.5f))
+                drawCircle(Brush.radialGradient(listOf(Color(0xFF14261C), Color(0xFF0D1418)), c, r20), r20, c)
+                // Faint 5-mile range rings and a crosshair
+                for (mi in listOf(5, 10, 15)) drawCircle(Color(0x332EBD59), r20 * mi / 20f, c, style = Stroke(1f))
+                drawLine(Color(0x262EBD59), c - Offset(r20, 0f), c + Offset(r20, 0f), 1f)
+                drawLine(Color(0x262EBD59), c - Offset(0f, r20), c + Offset(0f, r20), 1f)
                 val r8 = r20 * wx.lightningMi.toFloat() / 20f
-                drawCircle(if (wx.lightningHold) Color(0x55D42020) else Color(0x332EBD59), r8, c)
+                drawCircle(if (wx.lightningHold) Color(0x55D42020) else Color(0x1F2EBD59), r8, c)
                 drawCircle(Color(0xFFD42020), r8, c, style = Stroke(2f))
+                // Slow radar sweep: a fading wedge trailing the beam.
+                val sweep = (System.currentTimeMillis() % 4000L) / 4000f * 360f
+                rotate(sweep, c) {
+                    drawArc(Brush.sweepGradient(0.85f to Color.Transparent, 1f to Color(0x592EBD59), center = c),
+                        0f, 360f, true, topLeft = c - Offset(r20, r20), size = Size(2 * r20, 2 * r20))
+                    drawLine(Color(0xAA4CE07A), c, c + Offset(r20, 0f), 1.5f)
+                }
+                drawCircle(Color(0xFF55606A), r20, c, style = Stroke(1.5f))
                 drawCircle(Color.White, 3f, c)
                 w.strikeMi?.let { mi ->
                     val a = (mi * 1.7) % (2 * Math.PI)
                     val rr = r20 * (mi.toFloat() / 20f).coerceAtMost(1f)
                     val p = c + Offset((rr * cos(a)).toFloat(), (rr * sin(a)).toFloat())
-                    drawCircle(Color(0xFFFFEB3B), 6f, p)
+                    drawCircle(Brush.radialGradient(listOf(Color(0xAAFFEB3B), Color.Transparent), p, 16f), 16f, p)
+                    drawCircle(Color(0xFFFFEB3B), 5f, p)
                 }
             }
             Column(Modifier.weight(1f).padding(start = 8.dp)) {

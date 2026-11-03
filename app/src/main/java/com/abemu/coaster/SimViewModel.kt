@@ -141,7 +141,7 @@ class SimViewModel : ViewModel() {
                     plc.plant.step(scanDt)
                     trends.update(plc, scanDt)
                     queue.update(scanDt, plc)
-                    radio.update(scanDt, plc, radioOn, night, queue.postedWaitMin, weather.windMph)
+                    radio.update(scanDt, plc, radioOn, night, queue.postedWaitMin, weather.windMph, storm = weather.strikeMi != null)
                     drill?.let { d ->
                         val was = d.finished
                         d.update(scanDt)
@@ -184,7 +184,7 @@ class SimViewModel : ViewModel() {
         if (deskMode) switchDeskMode(false)
         val id = CoasterLibrary.default(sc.type).id
         val fresh = build(id, sc.trains)
-        fresh.dispatchTarget = plc.dispatchTarget
+        fresh.targetScale = plc.targetScale
         fresh.inputs.singleButtonDispatch = plc.inputs.singleButtonDispatch
         if (sc.warmDispatches >= 0) com.abemu.coaster.sim.Autopilot.warmUp(fresh, sc.warmDispatches, sc.trigger)
         coasterId = id
@@ -213,7 +213,7 @@ class SimViewModel : ViewModel() {
         fresh.inputs.singleButtonDispatch = old.singleButtonDispatch
         fresh.inputs.loadStandEstop = old.loadStandEstop
         fresh.inputs.unloadStandEstop = old.unloadStandEstop
-        fresh.dispatchTarget = plc.dispatchTarget
+        fresh.targetScale = plc.targetScale
         if (id != coasterId) queue.reset()
         coasterId = id
         trainCount = fresh.plant.trains.size

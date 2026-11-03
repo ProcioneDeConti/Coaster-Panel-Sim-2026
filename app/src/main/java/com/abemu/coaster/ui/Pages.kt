@@ -60,177 +60,10 @@ import kotlin.math.sin
 
 // ================================================================ STATION
 
-@Composable
-fun StationPage(vm: SimViewModel) {
-    vm.frame.longValue
-    val plc = vm.plc
-    val plant = plc.plant
-    val inp = plc.inputs
-    val st = plant.stationTrain()
-    val tm = rememberTextMeasurer(cacheSize = 64)
-    Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        Column(Modifier.weight(1.25f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            HmiFrame("STATION – ${if (st != null) "TRAIN ${st.id} IN STATION" else "NO TRAIN"}") {
-                // Train plan view: per-seat restraint locks, the operator's car checks, gates. Tap a car to check it.
-                var walkMsg by remember { mutableStateOf("") }
-                val rowsN = plc.profile.rows
-                // Layout in dp: unload platform, rails + train, gates, load platform.
-                // Riders only show once the load gates have opened for this train.
-                var boarded by remember(st?.id) { mutableStateOf(false) }
-                if (st != null && plant.gatePos > 0.0) boarded = true
-                val u = with(androidx.compose.ui.platform.LocalDensity.current) { 1.dp.toPx() }
-                val margin = 12 * u
-                val trainY = 30 * u
-                val trainH = 62 * u
-                Canvas(Modifier.fillMaxWidth().height(154.dp).pointerInput(plc, u) {
-                    detectTapGestures { p ->
-                        val carW = (size.width - margin * 2) / rowsN
-                        val r = ((p.x - margin) / carW).toInt()
-                        if (p.y in trainY..trainY + trainH && p.x >= margin && r in 0 until rowsN) walkMsg = plc.checkCar(r)
-                    }
-                }) {
-                    val rows = rowsN
-                    val carW = (size.width - margin * 2) / rows
-                    val label = TextStyle(color = Color(0xFFE0E0E0), fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
-                    // Unload platform (top).
-                    drawRect(Color(0xFF6D4C41), Offset.Zero, Size(size.width, 16 * u))
-                    drawText(tm, "UNLOAD PLATFORM", Offset(margin, 2 * u), label)
-                    // Station track: two rails along the train.
-                    for (ry in listOf(trainY + 10 * u, trainY + trainH - 10 * u))
-                        drawLine(Color(0xFF8A9096), Offset(0f, ry), Offset(size.width, ry), 3 * u)
-                    for (r in 0 until rows) {
-                        val x0 = margin + r * carW
-                        if (st != null) {
-                            val rowOk = plant.rowLockSensor(r)
-                            val body = Offset(x0 + 3 * u, trainY)
-                            val bodySize = Size(carW - 6 * u, trainH)
-                            val corner = androidx.compose.ui.geometry.CornerRadius(8 * u)
-                            drawRoundRect(Color(0xFF0D47A1), body, bodySize, corner)
-                            drawRoundRect(Color(0xFF1E88E5), body, bodySize, corner, style = Stroke(2 * u))
-                            // Seats in two columns, front to back; each lit by its own lock switch.
-                            val per = st.seatsPerRow
-                            val cols = if (per >= 2) 2 else 1
-                            val lines = (per + cols - 1) / cols
-                            val sw = (carW - 18 * u) / lines
-                            val sh = (trainH - 12 * u) / cols
-                            for (k in 0 until per) {
-                                val idx = r * per + k
-                                val o = Offset(x0 + 9 * u + (k / cols) * sw, trainY + 6 * u + (k % cols) * sh)
-                                val seat = Size(sw - 4 * u, sh - 4 * u)
-                                drawRoundRect(if (st.seatLocked[idx]) Color(0xFF2EBD59) else Color(0xFFFFB300), o + Offset(2 * u, 2 * u), seat,
-                                    androidx.compose.ui.geometry.CornerRadius(4 * u))
-                                if (boarded && st.seatTaken[idx]) drawCircle(Color(0xCCFFFFFF), minOf(sw, sh) * 0.17f, o + Offset(sw / 2, sh / 2))
-                            }
-                            if (!rowOk) drawRoundRect(Color(0xFFFF5252), body, bodySize, corner, style = Stroke(3 * u))
-                            if (plc.carChecked[r]) {
-                                drawRoundRect(Color.White, body, bodySize, corner, style = Stroke(3 * u))
-                                drawText(tm, "✓", Offset(x0 + carW - 16 * u, trainY - 13 * u),
-                                    TextStyle(color = Hmi.Ok, fontSize = 10.sp, fontWeight = FontWeight.Bold))
-                            }
-                        }
-                    }
-                    // Direction of travel: a green arrow off the nose of the front car (row 1, on the left).
-                    if (st != null) {
-                        val cy = trainY + trainH / 2
-                        drawPath(androidx.compose.ui.graphics.Path().apply {
-                            moveTo(margin - 10 * u, cy); lineTo(margin + 1 * u, cy - 9 * u); lineTo(margin + 1 * u, cy + 9 * u); close()
-                        }, Color(0xFF2EBD59))
-                    }
-                    // Load gates, one per car, right under it: each leaf swings 90° about its hinge toward the train.
-                    val open = plant.gatePos.toFloat().coerceIn(0f, 1f)
-                    val len = minOf(carW * 0.45f, 30 * u)
-                    val gateY = trainY + trainH + 8 * u + len
-                    val gateColor = if (plant.gateClosedSensor) Color(0xFF2EBD59) else Color(0xFFFFB300)
-                    val ang = open * (PI / 2).toFloat()
-                    for (r in 0 until rows) {
-                        val x0 = margin + r * carW
-                        val hinge = Offset(x0 + carW / 2 - len / 2, gateY)
-                        drawLine(Color(0xFF616161), Offset(x0, gateY), hinge, 3 * u)
-                        drawLine(Color(0xFF616161), Offset(hinge.x + len, gateY), Offset(x0 + carW, gateY), 3 * u)
-                        drawLine(gateColor, hinge, hinge + Offset(len * cos(ang), -len * sin(ang)), 4 * u, cap = androidx.compose.ui.graphics.StrokeCap.Round)
-                        drawCircle(Color(0xFF424242), 3 * u, hinge)
-                        // Position indicator beside the gate: bar horizontal when closed, vertical when open.
-                        val rad = minOf(7 * u, carW * 0.1f)
-                        // Kept inside this car's span so it can't run into the neighbouring fence on short cars.
-                        val c = Offset(maxOf(hinge.x - rad - 6 * u, x0 + rad + 3 * u), gateY - rad - 5 * u)
-                        drawCircle(Color(0xFF202020), rad + 2 * u, c)
-                        drawCircle(gateColor, rad, c)
-                        val d = Offset(rad * 0.85f * cos(ang), rad * 0.85f * sin(ang))
-                        drawLine(Color.Black, c - d, c + d, 2 * u)
-                    }
-                    // Load platform (bottom).
-                    val loadY = gateY + 6 * u
-                    drawRect(Color(0xFF5D6670), Offset(0f, loadY), Size(size.width, size.height - loadY))
-                    drawText(tm, "LOAD PLATFORM", Offset(margin, loadY + 3 * u), label)
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                    HmiLabel("■ locked", 10.sp, color = Color(0xFF2EBD59))
-                    HmiLabel("■ unlocked", 10.sp, color = Color(0xFFFFB300))
-                    HmiLabel("● rider", 10.sp, color = Hmi.Dim)
-                    HmiLabel("gate: green closed · amber open", 10.sp, color = Hmi.Dim)
-                }
-                if (plc.restraintWalk) {
-                    val left = plc.carChecked.count { !it }
-                    HmiLabel(
-                        when {
-                            st == null -> "Restraint check: no train"
-                            left == 0 -> "Restraint check COMPLETE – load side may go ready"
-                            else -> "Restraint check: tap each car to push-pull test it ($left of $rowsN to check)"
-                        } + if (walkMsg.isNotEmpty()) "   ·   $walkMsg" else "",
-                        11.sp, bold = true, color = if (left == 0 && st != null) Hmi.Ok else Hmi.Info,
-                    )
-                }
-            }
-            HmiFrame("STATION CONTROLS (HMI)") {
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    HmiHoldButton("RESTRAINTS\nOPEN", Modifier.weight(1f)) { inp.restraintOpen = it }
-                    HmiHoldButton("RESTRAINTS\nLOCK", Modifier.weight(1f)) { inp.restraintClose = it }
-                    HmiHoldButton("GATES\nOPEN", Modifier.weight(1f)) { inp.gatesOpen = it }
-                    HmiHoldButton("GATES\nCLOSE", Modifier.weight(1f)) { inp.gatesClose = it }
-                }
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                DispatchTimer(vm, Modifier.weight(1.3f))
-                HmiFrame("OPERATOR STANDS", Modifier.weight(1f)) {
-                    StandStatus("Load stand", plc.inputs.loadStandEstop, plc.loadReady)
-                    FootSwitch("Load foot switch", plc.inputs.loadFootSwitch) { plc.inputs.loadFootSwitch = it }
-                    StandStatus("Unload stand", plc.inputs.unloadStandEstop, plc.unloadReady)
-                    FootSwitch("Unload foot switch", plc.inputs.unloadFootSwitch) { plc.inputs.unloadFootSwitch = it }
-                    StandStatus("Console", plc.inputs.estopPressed, null)
-                }
-            }
-        }
-        Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        if (plc.hasSwitch) SwitchTrackFrame(vm)
-        HmiFrame("DISPATCH PERMISSIVES", Modifier.fillMaxWidth().weight(1f)) {
-            plc.permissives.forEach { p ->
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Indicator(p.ok, Hmi.Ok, Hmi.Bad, 14)
-                    HmiLabel("  ${p.label}", 12.sp)
-                }
-            }
-            Box(
-                Modifier.fillMaxWidth().padding(top = 8.dp)
-                    .background(when {
-                        plc.dispatchArmed -> if (flasher()) Hmi.Warn else Color(0xFF7A5A00)
-                        plc.dispatchReady -> if (flasher()) Hmi.Ok else Color(0xFF156B31)
-                        else -> Color(0xFF7A8189)
-                    })
-                    .padding(10.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(when { plc.dispatchArmed -> "DISPATCH HELD – COURSE OCCUPIED"; plc.dispatchReady -> "READY TO DISPATCH"; else -> "NOT READY" }, color = Color.White, fontWeight = FontWeight.Bold)
-            }
-        }
-        SpielPanel(plc.profile.spec.id, plc.profile.name, Modifier.fillMaxWidth())
-        }
-    }
-}
-
 /** Top-down view of the swing-launch switch track: a sliding table carrying a curved piece (station line to
  *  launch track) and a straight piece (spike line to launch track). */
 @Composable
-private fun SwitchTrackFrame(vm: SimViewModel) {
+internal fun SwitchTrackFrame(vm: SimViewModel) {
     vm.frame.longValue // recompose each update (the PLC object itself never changes)
     val plc = vm.plc
     val p = plc.profile
@@ -292,7 +125,7 @@ private fun SwitchTrackFrame(vm: SimViewModel) {
                 plant.trains.forEach { tr ->
                     val near = tr.spike > 0 || tr.tailOnSpike || abs(plant.signedDist(j, tr.s)) < reach
                     if (!near) return@forEach
-                    val c = trainColors[(tr.id - 1) % trainColors.size]
+                    val c = trainColor(p, tr.id)
                     val back = if (tr.tailOnSpike && tr.spike <= 0) p.ahead(j, tr.s) else 0.0
                     fun at(d: Double) = when {
                         tr.spike > 0 -> place(0.0, tr.spike + d)
@@ -564,8 +397,10 @@ fun SimPage(vm: SimViewModel, onOpenBuilder: () -> Unit, onOpenEditor: () -> Uni
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                     HmiLabel("Dispatch target", 11.sp, modifier = Modifier.width(90.dp))
-                    listOf(30.0, 45.0, 60.0, 90.0).forEach { t ->
-                        HmiButton("${t.toInt()} s", active = plc.dispatchTarget == t, activeColor = Hmi.Info) { plc.dispatchTarget = t }
+                    // The rated interval (from the ride's rated capacity), or eased off for training.
+                    listOf(1.0, 1.15, 1.3, 1.5).forEach { k ->
+                        val sec = Math.round(plc.profile.ratedInterval * k)
+                        HmiButton(if (k == 1.0) "RATED ${mss(sec.toDouble())}" else mss(sec.toDouble()), active = plc.targetScale == k, activeColor = Hmi.Info) { plc.targetScale = k }
                     }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -714,41 +549,6 @@ private fun FaultToggle(label: String, on: Boolean, set: (Boolean) -> Unit) {
 }
 
 
-@Composable
-private fun DispatchTimer(vm: SimViewModel, modifier: Modifier) {
-    vm.frame.longValue
-    val plc = vm.plc
-    HmiFrame("DISPATCH TIMER  (target ${plc.dispatchTarget.toInt()} s)", modifier) {
-        val since = plc.sinceDispatch
-        val target = plc.dispatchTarget
-        val color = when {
-            since == null -> Hmi.Dim
-            since <= target * 0.85 -> Hmi.Ok
-            since <= target -> Hmi.Warn
-            else -> Hmi.Bad
-        }
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                since?.let { "%d:%02d".format(it.toInt() / 60, it.toInt() % 60) } ?: "--:--",
-                fontSize = 30.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, color = color,
-            )
-            HmiLabel("  since last dispatch", 10.sp, color = Hmi.Dim)
-        }
-        // Progress bar toward the target interval
-        val frac = ((since ?: 0.0) / target).coerceIn(0.0, 1.5).toFloat() / 1.5f
-        Canvas(Modifier.fillMaxWidth().height(10.dp)) {
-            drawRect(Color(0xFF9AA1A8))
-            drawRect(color, size = Size(size.width * frac, size.height))
-            val tx = size.width / 1.5f
-            drawLine(Color.Black, Offset(tx, 0f), Offset(tx, size.height), 2f)
-        }
-        ValueBox("Last interval", plc.lastInterval?.let { "%.0f s (%+.0f)".format(it, it - target) } ?: "—")
-        ValueBox("Average (last 20)", plc.avgInterval?.let { "%.0f s".format(it) } ?: "—")
-        val riders = plc.profile.ridersPerTrain
-        ValueBox("Capacity at average", plc.avgInterval?.let { "${(3600 / it * riders).toInt()} riders/h" } ?: "—")
-    }
-}
-
 /** Debug panel (shown with Debug tools ON): play each ride sound on demand. Held sounds toggle; one-shots play once. */
 @Composable
 private fun SoundTestFrame() {
@@ -814,28 +614,6 @@ private fun RadioClipPicker() {
         HmiButton("NEXT ▸", fontSize = 10.sp) {
             val i = script.indexOf(sel) + 1
             sel = script.getOrNull(i % script.size)?.also { RadioState.preview.addLast(it.clip) }
-        }
-    }
-}
-
-/** Stand foot switch: tap to step on / off. Lit while an operator is standing on it. */
-@Composable
-private fun FootSwitch(name: String, on: Boolean, set: (Boolean) -> Unit) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        HmiLabel("  $name", 10.sp, color = Hmi.Dim, modifier = Modifier.weight(1f))
-        HmiButton(if (on) "AT STAND" else "STEP ON", active = on, activeColor = Hmi.Ok) { Haptics.tick(); set(!on) }
-    }
-}
-
-@Composable
-private fun StandStatus(name: String, estop: Boolean, ready: Boolean?) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        HmiLabel(name, 11.sp, modifier = Modifier.weight(1f))
-        Indicator(estop, if (flasher()) Hmi.Bad else Color(0xFF7A1010), Hmi.Ok)
-        HmiLabel(if (estop) " E-STOP  " else " OK      ", 10.sp, bold = estop)
-        if (ready != null) {
-            Indicator(ready, Color.White, Hmi.Off)
-            HmiLabel(" RDY", 10.sp)
         }
     }
 }

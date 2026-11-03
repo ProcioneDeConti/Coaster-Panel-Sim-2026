@@ -77,7 +77,7 @@ class GuestQueue(seed: Int = 11) {
         if (lastDispatchCount < 0) lastDispatchCount = dc
         if (dc > lastDispatchCount) {
             repeat(dc - lastDispatchCount) {
-                val seats = plc.profile.ridersPerTrain
+                val seats = plc.profile.ridersPerDispatch
                 val fill = (seats - rnd.nextInt(0, maxOf(1, seats / 10) + 1)).coerceAtLeast(0)
                 val n = minOf(inLine, fill)
                 inLine -= n
@@ -98,7 +98,7 @@ class GuestQueue(seed: Int = 11) {
 
     /** Wait for a guest joining now: the line divided by the ride's current hourly capacity, rounded up to 5 minutes. */
     fun estimateWaitMin(plc: RidePlc): Int {
-        val seats = plc.profile.ridersPerTrain
+        val seats = plc.profile.ridersPerDispatch
         val interval = plc.avgInterval ?: plc.dispatchTarget
         val perMin = seats * 60.0 / interval.coerceAtLeast(10.0)
         val raw = inLine / perMin

@@ -56,6 +56,6 @@ class TrendRecorder(val period: Double = 0.5) {
         val frac = (p.chainSpeed / prof.liftSpeed).coerceIn(0.0, 1.0)
         val loaded = p.trains.any { prof.inRange(it.s, prof.liftStart, prof.liftEnd) }
         val noise = (Math.random() - 0.5) * 6
-        return 45.0 * frac + (if (loaded) 170.0 * frac * (prof.spec.cars / 7.0) else 0.0) + noise
+        return 45.0 * frac + (if (loaded) 170.0 * frac * (prof.ridersPerTrain / 28.0) else 0.0) + noise
     }
 }

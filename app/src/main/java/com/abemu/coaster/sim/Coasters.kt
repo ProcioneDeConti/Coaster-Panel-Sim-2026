@@ -57,6 +57,18 @@ data class CoasterSpec(
      * Two trains load at once and leave as a pair; the rear one follows the front train to the foot of the lift.
      */
     val pairedStation: Boolean = false,
+    /**
+     * Rated (theoretical hourly) ride capacity, riders/h: the published figure ops are graded against. The target
+     * dispatch interval follows from it (riders per dispatch / capacity). Real rides use the published number
+     * (RCDB / park); fictional rides get a plausible one for their size.
+     */
+    val ratedCapacity: Int = 1200,
+    /** Length of one car, metres (train = cars × carLength + 2 m of nose/tail). */
+    val carLength: Double = 2.0,
+    /** Train livery colours (0xAARRGGBB) by train number, if the real ride's trains have their own colours. */
+    val liveries: List<Long>? = null,
+    /** Station screen only: trains leave the station to the right (unload platform still at the top). */
+    val stationExitRight: Boolean = false,
     /** Real hill heights before the MCBR in metres (replaces [hills1]); each is still capped by the energy available. */
     val hillsM: List<Double>? = null,
     /** Height the first drop bottoms out at, metres. */
@@ -80,7 +92,10 @@ data class CoasterSpec(
     val passSpeed: Double = 6.0,
     /** Published track length (metres). OSM traces are flat, so they miss the length the hills add. */
     val trackLength: Double = 0.0,
-)
+) {
+    /** Train length in metres. */
+    val trainLengthM: Double get() = cars * carLength + 2.0
+}
 
 object CoasterLibrary {
     private const val LOSS = 0.04 // conservative energy-head loss per metre (friction + drag)
@@ -90,7 +105,8 @@ object CoasterLibrary {
         // ---------------- Lift hill ----------------
         CoasterSpec("millennium", "Millennium Force", ProfileType.LIFT, 94.5, liftSpeed = 15 / Units.MPH, // 15 mph cable lift (restored to original speed)
             hills1 = listOf(0.62, 0.55, 0.4), mcbrFrac = 0.35, hills2 = listOf(0.6, 0.45, 0.35),
-            cars = 9, ridersPerCar = 4, layout = 1, seed = 11, park = "Cedar Point",
+            ratedCapacity = 1300, /* RCDB: 1,300/h */ cars = 9, ridersPerCar = 4, layout = 1, seed = 11, park = "Cedar Point",
+            liveries = listOf(0xFFD32F2F, 0xFF1E5FC4, 0xFFF9C80E), stationExitRight = true, // red, blue and yellow trains
             hasMcbr = false, unloadStation = true, dispatchHoldForCourse = true, movingBlockStation = true,
             note = "Giga coaster with cable lift. 4 blocks: load, lift, main course ending at the block brake before unload (the first brakes are trims), unload. Dispatch holds until the lift is clear and the course train is stopped on the brakes; then all three trains advance together."),
         CoasterSpec("magnum", "Magnum XL-200", ProfileType.LIFT, 62.5, liftSpeed = 6 / Units.MPH, // 6 mph chain
@@ -99,63 +115,63 @@ object CoasterLibrary {
             hillsM = listOf(47.9, 24.4, 9.1, 8.2, 7.3, 6.4, 5.5, 4.6), trimAfter = 1, trimSpeed = 13.4, // trims on the turnaround bite every run (~35 -> 30 mph)
             stationH = 7.6, mcbrHeight = 13.7, trackLength = 5106 * 0.3048, passSpeed = 8 / Units.MPH, valleyH = 62.5 - 59.3, turnH = 30.5,
             preLift = 25.0, dropTo = 62.5 - 59.3, dropSpeed = 72 / Units.MPH, // drop bottoms out ~10 ft above grade
-            cars = 6, ridersPerCar = 6, layout = 1, seed = 4, park = "Cedar Point",
+            ratedCapacity = 2000, /* RCDB: 2,000/h */ cars = 6, ridersPerCar = 6, layout = 1, seed = 4, park = "Cedar Point",
             note = "Out-and-back hyper coaster: slight decline into the 6 mph chain, 205 ft lift, 194.7 ft drop at 60° to 72 mph, " +
                 "157 ft camelback into tunnel 1, 80 ft speed hill, trim brakes into the 100 ft pretzel turnaround, six bunny hills (30-15 ft) through tunnels 2 and 3 to the MCBR, then the final brakes. Station 25 ft above grade."),
         CoasterSpec("gemini", "Gemini", ProfileType.LIFT, 38.4, liftSpeed = 4.0,
             hills1 = listOf(0.7, 0.5, 0.55), mcbrFrac = 0.45, hills2 = listOf(0.55, 0.4),
-            cars = 6, ridersPerCar = 4, layout = 2, seed = 12, park = "Cedar Point",
+            ratedCapacity = 1650, /* one track; Cedar Point quotes 3,300/h for both */ cars = 5, ridersPerCar = 6, carLength = 2.4, layout = 2, seed = 12, park = "Cedar Point",
             note = "Racing coaster with two side-by-side tracks; one track is modelled. Approximation of the 1978 Arrow original."),
         CoasterSpec("thunder", "Thunder Ridge", ProfileType.LIFT, 22.0,
             hills1 = listOf(0.6, 0.45), mcbrFrac = 0.45, hills2 = listOf(0.5),
-            cars = 5, ridersPerCar = 4, layout = 0, seed = 2, note = "Family coaster."),
+            ratedCapacity = 1450, cars = 5, ridersPerCar = 4, layout = 0, seed = 2, note = "Family coaster."),
         CoasterSpec("timberline", "Timberline", ProfileType.LIFT, 33.0,
             hills1 = listOf(0.7, 0.5, 0.6), mcbrFrac = 0.4, hills2 = listOf(0.6, 0.4),
-            cars = 6, ridersPerCar = 4, layout = 2, seed = 7, note = "Wooden-style twister."),
+            ratedCapacity = 1750, cars = 6, ridersPerCar = 4, layout = 2, seed = 7, note = "Wooden-style twister."),
         CoasterSpec("midnight", "Midnight Express", ProfileType.LIFT, 28.0,
             hills1 = listOf(0.55, 0.65), mcbrFrac = 0.5, hills2 = listOf(0.5, 0.4),
-            cars = 5, ridersPerCar = 4, layout = 3, seed = 5, note = "Figure-eight terrain coaster."),
+            ratedCapacity = 1450, cars = 5, ridersPerCar = 4, layout = 3, seed = 5, note = "Figure-eight terrain coaster."),
         CoasterSpec("cyclone", "Cyclone Run", ProfileType.LIFT, 40.0,
             hills1 = listOf(0.7, 0.45, 0.55), mcbrFrac = 0.45, hills2 = listOf(0.5, 0.45),
-            cars = 7, ridersPerCar = 4, layout = 2, seed = 13, note = "Mid-size steel coaster."),
+            ratedCapacity = 2000, cars = 7, ridersPerCar = 4, layout = 2, seed = 13, note = "Mid-size steel coaster."),
         CoasterSpec("ironfalcon", "Iron Falcon", ProfileType.LIFT, 65.0, liftSpeed = 4.5,
             hills1 = listOf(0.65, 0.5, 0.6, 0.4), mcbrFrac = 0.35, hills2 = listOf(0.55, 0.4, 0.35),
-            cars = 8, ridersPerCar = 4, layout = 0, seed = 9, note = "Hyper coaster."),
+            ratedCapacity = 2300, cars = 8, ridersPerCar = 4, layout = 0, seed = 9, note = "Hyper coaster."),
         CoasterSpec("summit", "Summit Seeker", ProfileType.LIFT, 80.0, liftSpeed = 5.0,
             hills1 = listOf(0.6, 0.5, 0.45), mcbrFrac = 0.35, hills2 = listOf(0.55, 0.45, 0.3),
-            cars = 8, ridersPerCar = 4, layout = 3, seed = 17, note = "Giga coaster."),
+            ratedCapacity = 2300, cars = 8, ridersPerCar = 4, layout = 3, seed = 17, note = "Giga coaster."),
 
         // ---------------- LSM launch ----------------
         CoasterSpec("tt2", "Top Thrill 2", ProfileType.LAUNCH, 125.0, launchSpeed = 53.6,
             hills1 = emptyList(), mcbrFrac = 0.25, hills2 = emptyList(), hasMcbr = false, unloadStation = true,
-            cars = 5, ridersPerCar = 4, layout = 1, seed = 30, park = "Cedar Point",
+            ratedCapacity = 1000, /* RCDB: 1,000/h */ cars = 5, ridersPerCar = 4, layout = 1, seed = 30, park = "Cedar Point",
             swing = 33.1 to 45.2, spikeHeight = 128.0, movingBlockStation = true,
             note = "Triple swing launch: forward to 74 mph (falls back off the top hat), backward to 101 mph up the 128 m rear spike, then forward to 120 mph over the 125 m top hat. One station track with unload and load positions; the final brake is the station wait. The load train crosses the switch track onto the launch line, the switch locks to the spike line, then it fires. Blocks: load, launch / top hat, final brake (wait), unload."),
         CoasterSpec("maverick", "Maverick", ProfileType.LAUNCH, 32.0, launchSpeed = 9.0, lsmLift = true,
             hills1 = listOf(0.5, 0.6), mcbrFrac = 0.4, hills2 = listOf(0.55, 0.45, 0.35),
-            cars = 6, ridersPerCar = 2, layout = 2, seed = 21, park = "Cedar Point", tunnelLaunch = 31.3, movingBlockStation = true,
+            ratedCapacity = 1200, /* RCDB: 1,200/h; trains dispatch in pairs */ cars = 3, ridersPerCar = 4, carLength = 4.0, layout = 2, seed = 21, park = "Cedar Point", tunnelLaunch = 31.3, movingBlockStation = true,
             pairedStation = true,
             note = "All-LSM: the 105 ft lift hill is an LSM incline straight out of the station (95° drop), then a tunnel block with the second LSM launch to 70 mph. " +
                 "Dual-load station: two trains load together and leave as a pair; the rear train waits at the foot of the lift until the front one is out of the tunnel. " +
                 "7 blocks (station front, LSM lift, tunnel, final brake / transfer, two holding blocks, station rear) for up to 6 trains."),
         CoasterSpec("quantum", "Quantum", ProfileType.LAUNCH, 14.0, launchSpeed = 20.0,
             hills1 = listOf(0.5, 0.4), mcbrFrac = 0.45, hills2 = listOf(0.45),
-            cars = 4, ridersPerCar = 4, layout = 0, seed = 3, note = "Family launch coaster."),
+            ratedCapacity = 1200, cars = 4, ridersPerCar = 4, layout = 0, seed = 3, note = "Family launch coaster."),
         CoasterSpec("pulse", "Pulse", ProfileType.LAUNCH, 22.0, launchSpeed = 24.0,
             hills1 = listOf(0.6, 0.45), mcbrFrac = 0.45, hills2 = listOf(0.5, 0.4),
-            cars = 5, ridersPerCar = 4, layout = 3, seed = 8),
+            ratedCapacity = 1450, cars = 5, ridersPerCar = 4, layout = 3, seed = 8),
         CoasterSpec("stormchaser", "Stormchaser", ProfileType.LAUNCH, 38.0, launchSpeed = 30.5,
             hills1 = listOf(0.65, 0.4, 0.5), mcbrFrac = 0.4, hills2 = listOf(0.55, 0.4),
-            cars = 6, ridersPerCar = 4, layout = 0, seed = 1),
+            ratedCapacity = 1750, cars = 6, ridersPerCar = 4, layout = 0, seed = 1),
         CoasterSpec("ignition", "Ignition", ProfileType.LAUNCH, 45.0, launchSpeed = 33.0,
             hills1 = listOf(0.6, 0.5, 0.45), mcbrFrac = 0.4, hills2 = listOf(0.5, 0.35),
-            cars = 6, ridersPerCar = 4, layout = 2, seed = 15),
+            ratedCapacity = 1750, cars = 6, ridersPerCar = 4, layout = 2, seed = 15),
         CoasterSpec("velocityx", "Velocity X", ProfileType.LAUNCH, 52.0, launchSpeed = 36.0,
             hills1 = listOf(0.6, 0.55, 0.4), mcbrFrac = 0.35, hills2 = listOf(0.55, 0.4, 0.3),
-            cars = 7, ridersPerCar = 4, layout = 3, seed = 19),
+            ratedCapacity = 2000, cars = 7, ridersPerCar = 4, layout = 3, seed = 19),
         CoasterSpec("hyperion", "Hyperion", ProfileType.LAUNCH, 72.0, launchSpeed = 42.0,
             hills1 = listOf(0.6, 0.5, 0.45), mcbrFrac = 0.35, hills2 = listOf(0.5, 0.4, 0.3),
-            cars = 8, ridersPerCar = 4, layout = 1, seed = 23),
+            ratedCapacity = 2300, cars = 8, ridersPerCar = 4, layout = 1, seed = 23),
     )
 
     /** Built-in coasters followed by rides made with the OSM ride builder. */
@@ -331,7 +347,7 @@ object CoasterLibrary {
         // ---- Station approach: a second brake block so a train can stack behind the station ----
         if (spec.hasMcbr && !spec.unloadStation && !spec.movingBlockStation) {
             val a0 = s
-            to(spec.cars * 2.0 + 2.0 + 14, finalH)
+            to(spec.trainLengthM + 14, finalH)
             blocks += Block(blocks.size + 1, nextTag(), "Station Approach", BlockKind.BRAKE_RUN, a0, s, s - 5, a0, approach = true)
         }
 
@@ -340,19 +356,19 @@ object CoasterLibrary {
         if (spec.pairedStation) {
             repeat(2) { i ->
                 val a0 = s
-                to(spec.cars * 2.0 + 2.0 + 14, finalH)
+                to(spec.trainLengthM + 14, finalH)
                 blocks += Block(blocks.size + 1, nextTag(), "Holding ${i + 1}", BlockKind.BRAKE_RUN, a0, s, s - 5, a0, approach = true)
             }
             val r0 = s
             pairStart = r0
-            to(spec.cars * 2.0 + 2.0 + 6, finalH)
+            to(spec.trainLengthM + 6, finalH)
             blocks += Block(blocks.size + 1, nextTag(), "Station – Rear", BlockKind.UNLOAD, r0, s, s - 3, r0, pairRear = true)
         }
 
         // ---- Separate unload station ----
         if (spec.unloadStation) {
             val u0 = s
-            to(spec.cars * 2.0 + 18, finalH)
+            to(spec.trainLengthM + 16, finalH)
             blocks += Block(blocks.size + 1, nextTag(), "Unload Station", BlockKind.UNLOAD, u0, s, s - 6, u0)
         }
         val stationStart = s
@@ -375,7 +391,7 @@ object CoasterLibrary {
             plan = CustomRides.layout(spec.id)?.let {
                 // Switch rides: unload and load share the station building; the junction matches RideProfile.spikeJunction.
                 val unloadStart = blocks.firstOrNull { b -> b.kind == BlockKind.UNLOAD }?.start ?: finalEnd
-                realPlan(it, topS, if (it.switchAt >= 0) unloadStart else finalEnd, b1.stopPos!!, 70.0 - (spec.cars * 2.0 + 2.0) - 11.0, length,
+                realPlan(it, topS, if (it.switchAt >= 0) unloadStart else finalEnd, b1.stopPos!!, 70.0 - (spec.trainLengthM) - 11.0, length,
                     45.0 + spec.preLift)
             }
                 ?: plan(spec, topS, finalFlat, finalEnd),

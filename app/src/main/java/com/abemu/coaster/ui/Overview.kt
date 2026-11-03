@@ -23,8 +23,16 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.text.TextMeasurer
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
@@ -46,6 +54,56 @@ import kotlin.math.abs
 import androidx.compose.ui.draw.clipToBounds
 
 internal val trainColors = listOf(Color(0xFF1565C0), Color(0xFF8E24AA), Color(0xFF00897B), Color(0xFFEF6C00))
+
+/** Colour of train [id] on this ride: the real livery where the spec has one, else the generic palette. */
+internal fun trainColor(profile: RideProfile, id: Int): Color =
+    profile.spec.liveries?.let { Color(it[(id - 1) % it.size]) } ?: trainColors[(id - 1) % trainColors.size]
+
+/** Legible text colour on top of [bg] (dark on yellow, white elsewhere). */
+internal fun inkOn(bg: Color): Color = if (bg.luminance() > 0.5f) Color(0xFF15191D) else Color.White
+
+private val legendKey = listOf(
+    "━" to Color(0xFFE53935), " occupied  " to null, "━" to Color(0xFF43A047), " clear    " to null,
+    "┅" to Color(0xFFFF1744), " brake closed  " to null, "┅" to Color(0xFF00E676), " open    " to null,
+    "●" to Color(0xFFFFEB3B), " entry prox" to null,
+)
+
+/** Diagram key on a dark backing so scenery and track never run through it; each symbol in its own colour. */
+internal fun DrawScope.legendChip(tm: TextMeasurer, title: String?, at: Offset, draw: Boolean = true): Rect {
+    val text = buildAnnotatedString {
+        if (title != null) withStyle(SpanStyle(color = Color(0xFFB0BEC5), fontWeight = FontWeight.Bold)) { append("$title     ") }
+        legendKey.forEach { (str, col) -> withStyle(SpanStyle(color = col ?: Color(0xFF8FA3B1))) { append(str) } }
+    }
+    val l = tm.measure(text, TextStyle(fontSize = 10.sp))
+    val px = 6.dp.toPx(); val py = 3.dp.toPx()
+    val r = Rect(at - Offset(px, py), Size(l.size.width + 2 * px, l.size.height + 2 * py))
+    if (draw) {
+        drawRoundRect(Color(0xD90A121A), r.topLeft, r.size, CornerRadius(py * 2))
+        drawText(l, topLeft = at)
+    }
+    return r
+}
+
+/** Train ID + speed (mph) as a pill in the train's colour. [bottomLeft] is the preferred spot; if it would cover a
+ *  tag already drawn this frame (trains parked nose to tail), it steps up, then down, until clear. */
+internal fun DrawScope.trainTag(tm: TextMeasurer, id: Int, vMs: Double, color: Color, bottomLeft: Offset, placed: MutableList<Rect>) {
+    val l = tm.measure("T$id  ${"%.0f".format(Units.mph(abs(vMs)))} mph",
+        TextStyle(color = inkOn(color), fontSize = 10.sp, fontWeight = FontWeight.Bold))
+    val px = 5.dp.toPx(); val py = 1.5.dp.toPx()
+    val w = l.size.width + 2 * px; val h = l.size.height + 2 * py
+    val x = bottomLeft.x.coerceIn(2f, (size.width - w - 2f).coerceAtLeast(2f))
+    val base = Rect(x, bottomLeft.y - h, x + w, bottomLeft.y)
+    val r = sequenceOf(0, -1, 1, -2, 2, -3, 3)
+        .map { k -> base.translate(0f, k * (h + 3f)) }
+        .map { if (it.top < 2f) it.translate(0f, 2f - it.top) else it }
+        .firstOrNull { c -> placed.none { it.overlaps(c) } } ?: base
+    placed += r
+    drawRoundRect(Color(0x66000000), r.topLeft + Offset(0f, 2f), r.size, CornerRadius(h / 2))
+    drawRoundRect(color, r.topLeft, r.size, CornerRadius(h / 2))
+    drawRoundRect(Color.White.copy(alpha = 0.55f), r.topLeft, r.size, CornerRadius(h / 2), style = Stroke(1f))
+    drawText(l, topLeft = r.topLeft + Offset(px, py))
+}
+
 
 /**
  * Draws a train as linked cars that bend with the track. [at] gives the canvas point [d] metres behind the head.
@@ -119,15 +177,21 @@ fun OverviewPage(vm: SimViewModel) {
 fun BlockStatusFrame(plc: com.abemu.coaster.sim.RidePlc, modifier: Modifier = Modifier) {
     HmiFrame("BLOCK STATUS", modifier) {
         Row {
-            listOf("BLOCK" to 1.6f, "STATUS" to 1.1f, "TRAIN" to 0.6f, "BRAKE" to 0.9f, "SPEED" to 0.8f).forEach { (h, w) ->
+            listOf("BLOCK" to 2.2f, "STATUS" to 1.1f, "TRAIN" to 0.6f, "BRAKE" to 0.9f, "SPEED" to 0.8f).forEach { (h, w) ->
                 HmiLabel(h, 10.sp, bold = true, color = Hmi.Dim, modifier = Modifier.weight(w))
             }
         }
         plc.profile.blocks.forEach { b ->
             val id = plc.occ[b.index]
             val brk = plc.plant.brakes[b.index]
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                HmiLabel("${b.tag} ${b.name}", 11.sp, modifier = Modifier.weight(1.6f))
+            // Zebra rows; an occupied block gets a faint red wash so it reads at a glance.
+            val rowBg = when {
+                id != -1 && plc.powered -> Color(0x1AE53935)
+                b.index % 2 == 0 -> Color(0x0D000000)
+                else -> Color.Transparent
+            }
+            Row(Modifier.background(rowBg).padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                HmiLabel("${b.tag} ${b.name}", 11.sp, modifier = Modifier.weight(2.2f))
                 Row(Modifier.weight(1.1f), verticalAlignment = Alignment.CenterVertically) {
                     val hold = plc.holdT[b.index]
                     Indicator(id != -1, if (hold > 0) Hmi.Warn else Hmi.Bad, Hmi.Ok)
@@ -269,8 +333,9 @@ fun TrackDiagram(plc: RidePlc, modifier: Modifier = Modifier, ghost: RideProfile
         }
 
         // Trains
+        val tags = arrayListOf(legendChip(tm, null, Offset(padL, 6f), draw = false))
         plant.trains.forEach { t ->
-            val c = trainColors[(t.id - 1) % trainColors.size]
+            val c = trainColor(profile, t.id)
             val sx = x(profile.spikeJunction)
             val back = if (t.tailOnSpike && t.spike <= 0) profile.ahead(profile.spikeJunction, t.s) else 0.0
             drawTrainCars(profile.spec.cars, c) { d ->
@@ -281,15 +346,10 @@ fun TrackDiagram(plc: RidePlc, modifier: Modifier = Modifier, ghost: RideProfile
                 }
             }
             if (t.spike > 0) {
-                drawText(tm, "T${t.id} ${"%.1f".format(abs(t.v))}", Offset(sx - 18f, spikeY(t.spike) - 32f),
-                    TextStyle(color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold, background = c))
+                trainTag(tm, t.id, t.v, c, Offset(sx - 18f, spikeY(t.spike) - 14f), tags)
                 return@forEach
             }
-            val head = pt(t.s)
-            drawText(
-                tm, "T${t.id} ${"%.1f".format(abs(t.v))}", head + Offset(-18f, -32f),
-                TextStyle(color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold, background = c),
-            )
+            trainTag(tm, t.id, t.v, c, pt(t.s) + Offset(-18f, -14f), tags)
         }
 
         // Remote E-Stop location marker
@@ -305,9 +365,7 @@ fun TrackDiagram(plc: RidePlc, modifier: Modifier = Modifier, ghost: RideProfile
                 TextStyle(color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold, background = Color(0xFFD50000)))
         }
 
-        // Legend
-        drawText(tm, "■ occupied  ■ clear   ━ brake closed / open   ● entry prox",
-            Offset(padL, 6f), TextStyle(color = Color(0xFF78909C), fontSize = 10.sp))
+        legendChip(tm, null, Offset(padL, 6f))
     }
 }
 
@@ -408,7 +466,7 @@ fun PlanDiagram(
         val a = pt(st.stopPos!! - profile.trainLength - 6)
         val b = pt(st.stopPos + 4)
         drawRect(Color(0xFF37474F), Offset(minOf(a.x, b.x), a.y + 6f), Size(kotlin.math.abs(b.x - a.x), 14f))
-        drawText(tm, "STATION", Offset(minOf(a.x, b.x), a.y + 22f), TextStyle(color = Color(0xFF90A4AE), fontSize = 9.sp))
+        drawText(tm, "STATION", Offset(minOf(a.x, b.x), a.y + 22f), TextStyle(color = Color(0xFF90A4AE), fontSize = 9.sp, background = Color(0xB30F1A24)))
         val fb = profile.blocks[profile.transferBlock]
         val f1 = pt(fb.brakeStart!!)
         val f2 = pt(fb.stopPos!!)
@@ -417,7 +475,7 @@ fun PlanDiagram(
             val x = f1.x + (f2.x - f1.x) * (0.25f + 0.4f * k)
             drawLine(Color(0xFF00897B), Offset(x - 14f, f1.y - 16f), Offset(x + 14f, f1.y - 16f), 9f, StrokeCap.Round)
         }
-        drawText(tm, "TRANSFER / STORAGE", Offset(minOf(f1.x, f2.x), f1.y - 34f), TextStyle(color = Color(0xFF607D8B), fontSize = 9.sp))
+        drawText(tm, "TRANSFER / STORAGE", Offset(minOf(f1.x, f2.x), f1.y - 34f), TextStyle(color = Color(0xFF607D8B), fontSize = 9.sp, background = Color(0xB30F1A24)))
 
         // Track, coloured by block occupancy
         profile.blocks.forEach { blk ->
@@ -500,8 +558,9 @@ fun PlanDiagram(
         }
 
         // Trains
+        val tags = arrayListOf(legendChip(tm, "PLAN VIEW", Offset(8f, 6f), draw = false))
         plant.trains.forEach { t ->
-            val c = trainColors[(t.id - 1) % trainColors.size]
+            val c = trainColor(profile, t.id)
             // One rectangle per train, lying along the track at its front (up the spike line when on it).
             // Outline: green = normal, yellow = PLC checking it, red = stopped on a fault.
             fun spikeAt(d: Double) = xf.planPt(profile.spikePlanPoint(d.coerceIn(0.0, profile.spikeLength)))
@@ -527,8 +586,7 @@ fun PlanDiagram(
             }
             drawPath(rect(7f, 25f, 10f), ring)
             drawPath(rect(4f, 22f, 7f), c)
-            drawText(tm, "T${t.id} ${"%.1f".format(kotlin.math.abs(t.v))}", head + Offset(8f, -22f),
-                TextStyle(color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold, background = c))
+            trainTag(tm, t.id, t.v, c, head + Offset(8f, -6f), tags)
         }
 
         // Remote E-Stop location
@@ -545,7 +603,6 @@ fun PlanDiagram(
 
         overlay?.invoke(this, xf)
 
-        drawText(tm, "PLAN VIEW   ━ occupied / clear   ┅ brake closed / open   ● entry prox",
-            Offset(8f, 6f), TextStyle(color = Color(0xFF78909C), fontSize = 10.sp))
+        legendChip(tm, "PLAN VIEW", Offset(8f, 6f))
     }
 }

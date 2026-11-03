@@ -133,7 +133,8 @@ private fun WireSeg(modifier: Modifier) {
 
 @Composable
 private fun TagText(tag: String) {
-    Text(tag, fontSize = 8.sp, lineHeight = 9.sp, fontFamily = FontFamily.Monospace, maxLines = 2, color = Hmi.Text,
+    // Zero-width spaces let long tags wrap at '_' / '.' rather than mid-word.
+    Text(tag.replace("_", "_​").replace(".", ".​"), fontSize = 8.sp, lineHeight = 9.sp, fontFamily = FontFamily.Monospace, maxLines = 2, color = Hmi.Text,
         textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().height(TagH).padding(horizontal = 2.dp))
 }
 

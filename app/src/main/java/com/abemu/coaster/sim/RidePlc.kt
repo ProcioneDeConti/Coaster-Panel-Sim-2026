@@ -358,8 +358,13 @@ class RidePlc(val plant: Plant) {
     val hornActive get() = powered && alarms.hornDemand
     val resetNeeded get() = alarms.active.any { !it.condition } || (eStopped && !inputs.anyEstop)
 
-    /** Target dispatch interval for the operator timer, seconds. */
-    var dispatchTarget = 45.0
+    /**
+     * Instructor setting: target interval as a multiple of the ride's rated interval (1.0 = rated capacity).
+     * Kept as a ratio so it carries over sensibly when the ride changes.
+     */
+    var targetScale = 1.0
+    /** Target dispatch interval for the operator timer, seconds: the rated interval scaled by [targetScale]. */
+    val dispatchTarget: Double get() = Math.round(profile.ratedInterval * targetScale).toDouble()
     val sinceDispatch: Double? get() = dispatchTimes.lastOrNull()?.let { t - it }
     val lastInterval: Double? get() = if (dispatchTimes.size >= 2) dispatchTimes.last() - dispatchTimes[dispatchTimes.size - 2] else null
     val avgInterval: Double? get() = if (dispatchTimes.size >= 2) (dispatchTimes.last() - dispatchTimes.first()) / (dispatchTimes.size - 1) else null
@@ -416,6 +421,9 @@ class RidePlc(val plant: Plant) {
             allOutputsOff()
             rise("reset", i.faultReset); rise("start", i.rideStart); rise("cs", i.controlledStop)
             statusText = if (m == KeyMode.OFF) "Turn key to select mode" else "Press RIDE POWER ON"
+            // Keep the permissive list (HMI checklist, ladder rung) populated but dead while unpowered.
+            permissives = permissives.map { it.copy(ok = false) }.ifEmpty { listOf(Permissive("Ride power ON", false)) }
+            dispatchReady = false
             return
         }
 
@@ -594,6 +602,7 @@ class RidePlc(val plant: Plant) {
 
         val liftPermissive = Permissive("${profile.blocks[1].tag} ${profile.blocks[1].name} clear", nextClear(0))
         permissives = listOf(
+            Permissive("Ride power ON", true),
             Permissive("Key switch in AUTO", m == KeyMode.AUTO),
             Permissive("Ride running", running),
             Permissive("No active faults", !hasE && !hasC),

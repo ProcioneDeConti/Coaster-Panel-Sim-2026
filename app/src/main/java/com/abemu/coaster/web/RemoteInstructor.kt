@@ -59,7 +59,7 @@ object RemoteInstructor {
             }
             "weather" -> WeatherPreset.entries.firstOrNull { it.name == p["preset"] }?.let { vm.weather.preset = it }
             "speed" -> p["x"]?.toDoubleOrNull()?.takeIf { it in listOf(1.0, 2.0, 4.0) }?.let { vm.timeScale = it }
-            "dispatchTarget" -> p["x"]?.toDoubleOrNull()?.takeIf { it in listOf(30.0, 45.0, 60.0, 90.0) }?.let { plc.dispatchTarget = it }
+            "dispatchTarget" -> p["x"]?.toDoubleOrNull()?.takeIf { it in listOf(1.0, 1.15, 1.3, 1.5) }?.let { plc.targetScale = it }
             "drill" -> if (vm.drill?.finished != false) Scenarios.all.firstOrNull { it.id == p["id"] }?.let { vm.startDrill(it) }
             "desk" -> vm.switchDeskMode(on)
             "deskFaults" -> vm.deskRandomFaults = on
@@ -92,7 +92,7 @@ object RemoteInstructor {
             append("\"windHold\":${plc.weather.windHold},\"lightningHold\":${plc.weather.lightningHold}},")
             append("\"presets\":[${WeatherPreset.entries.joinToString(",") { "[${q(it.name)},${q(it.label)}]" }}],")
             append("\"desk\":${vm.deskMode},\"deskFaults\":${vm.deskRandomFaults},\"deskStatus\":${q(vm.autoOp.status)},\"repairs\":${vm.autoOp.repairs},")
-            append("\"speed\":${d(vm.timeScale)},\"dispatchTarget\":${d(plc.dispatchTarget)},\"wait\":${vm.queue.postedWaitMin},")
+            append("\"speed\":${d(vm.timeScale)},\"dispatchTarget\":${d(plc.dispatchTarget)},\"targetScale\":${d(plc.targetScale)},\"ratedInterval\":${d(plc.profile.ratedInterval)},\"wait\":${vm.queue.postedWaitMin},")
             append("\"scenarios\":[${Scenarios.all.joinToString(",") { "{\"id\":${q(it.id)},\"title\":${q(it.title)},\"kind\":${q(it.kind.label)}}" }}],")
             append("\"drill\":")
             val dr = vm.drill
@@ -142,7 +142,7 @@ function render(){if(!s)return;let h='<a href="/" style="color:#8fb4dd;text-deco
  h+='<div class="row"><span>Desk display (self-running)</span>'+b(s.desk?'ON':'OFF',s.desk,'cmd=desk&on='+(s.desk?0:1),'sel')+b('RANDOM FAULTS',s.deskFaults,'cmd=deskFaults&on='+(s.deskFaults?0:1),'sel')+'</div>';
  if(s.desk)h+='<div class="dim">Crew: '+esc(s.deskStatus)+' · repairs '+s.repairs+'</div>';
  h+='<div class="row"><span>Sim speed</span>'+[1,2,4].map(x=>b(x+'×',s.speed==x,'cmd=speed&x='+x,'sel')).join('')+'</div>';
- h+='<div class="row"><span>Dispatch target</span>'+[30,45,60,90].map(x=>b(x+' s',s.dispatchTarget==x,'cmd=dispatchTarget&x='+x,'sel')).join('')+'</div>';
+ h+='<div class="row"><span>Dispatch target</span>'+[1,1.15,1.3,1.5].map(x=>b((x==1?'Rated ':'')+Math.round(s.ratedInterval*x)+' s',s.targetScale==x,'cmd=dispatchTarget&x='+x,'sel')).join('')+'</div>';
  h+='<h2>WEATHER</h2><div>'+s.presets.map(p=>b(p[1],s.weather.preset==p[0],'cmd=weather&preset='+p[0],'sel')).join('')+'</div>';
  h+='<div class="dim">Now: '+esc(s.weather.current)+' · wind '+(+s.weather.wind).toFixed(0)+' mph'+(s.weather.strike!=null?' · strike '+(+s.weather.strike).toFixed(1)+' mi':'')+
   (s.weather.windHold?' · WIND HOLD':'')+(s.weather.lightningHold?' · LIGHTNING HOLD':'')+' · posted wait '+s.wait+' min</div>';
