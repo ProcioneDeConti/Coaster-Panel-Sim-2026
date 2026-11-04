@@ -31,8 +31,8 @@ data class Block(
     val pairRear: Boolean = false,
 )
 
-/** Trim brake: fins that cap the train's speed through [start, end] at [maxSpeed] (m/s). */
-data class Trim(val name: String, val start: Double, val end: Double, val maxSpeed: Double)
+/** Trim brake: fins that cap the train's speed through [start, end] at [maxSpeed] (m/s), slowing it at up to [decel] m/s². */
+data class Trim(val name: String, val start: Double, val end: Double, val maxSpeed: Double, val decel: Double = 5.0)
 
 /** Extra proximity sensor (field input) at track position [s]. */
 data class Prox(val name: String, val s: Double)
@@ -60,6 +60,8 @@ class RideProfile(
     val sensors: List<Prox> = emptyList(),
     /** Wheel scrub in a hard pull-out: caps speed like a trim, but there's no brake hardware (not drawn). */
     val pullOut: Trim? = null,
+    /** Course position the train ahead must pass before a held dispatch releases ([CoasterSpec.dispatchReleaseMark]); -1 = none. */
+    val dispatchReleaseS: Double = -1.0,
 ) {
     val type get() = spec.type
     val name get() = spec.name
@@ -224,7 +226,7 @@ class RideProfile(
         trims: List<Trim> = emptyList(), sensors: List<Prox> = emptyList(),
     ) = RideProfile(
         spec, length, elevation ?: this.elevation, blocks, plan, liftStart, liftEnd, liftCrestSensor,
-        launchStart, launchEnd, crestSensor, rollbackSpeed, transfer, trims, sensors, pullOut,
+        launchStart, launchEnd, crestSensor, rollbackSpeed, transfer, trims, sensors, pullOut, dispatchReleaseS,
     )
 
     companion object {

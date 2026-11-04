@@ -31,7 +31,7 @@ enum class SoundKind(val label: String) {
     STATION_PNEUMATICS("Gates & restraints"),
     AMBIENCE("Ambience (wind / air)"),
     STATION_MUSIC("Station music"),
-    DESK_PA("Desk-mode PA"),
+    DESK_PA("Auto spiels (desk PA)"),
 }
 
 /**

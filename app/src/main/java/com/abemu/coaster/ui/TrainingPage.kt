@@ -80,6 +80,11 @@ fun DeskBanner(vm: SimViewModel) {
         Text("   ${op.status}", color = Color.White, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
         Text("dispatches ${vm.plc.dispatchCount} · repairs ${op.repairs}", color = Color(0xFFD8F0E0), fontSize = 11.sp)
         Spacer(Modifier.width(8.dp))
+        // Automatic station announcements (desk PA) on/off.
+        val spiels = vm.soundEnabled[SoundKind.DESK_PA] != false
+        Text(if (spiels) "SPIELS ON" else "SPIELS OFF", color = if (spiels) Color.White else Color(0xFFFFC870), fontSize = 11.sp,
+            fontWeight = FontWeight.Bold, modifier = Modifier.clickable { vm.soundEnabled[SoundKind.DESK_PA] = !spiels }.padding(horizontal = 4.dp))
+        Spacer(Modifier.width(8.dp))
         Text("STOP ✕", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable { vm.switchDeskMode(false) })
     }
 }

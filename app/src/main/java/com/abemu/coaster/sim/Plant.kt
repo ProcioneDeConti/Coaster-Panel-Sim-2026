@@ -334,7 +334,7 @@ class Plant(val profile: RideProfile, activeTrains: Int, totalTrains: Int = 3) {
         }
         // Trim brake fins (passive, always active).
         p.trims.firstOrNull { p.inRange(t.s, it.start, it.end) }?.let { tr ->
-            if (t.v > tr.maxSpeed) t.v = max(tr.maxSpeed, t.v - 5.0 * dt)
+            if (t.v > tr.maxSpeed) t.v = max(tr.maxSpeed, t.v - tr.decel * dt)
         }
         p.pullOut?.takeIf { p.inRange(t.s, it.start, it.end) && t.v > it.maxSpeed }?.let { t.v = max(it.maxSpeed, t.v - 12.0 * dt) }
 

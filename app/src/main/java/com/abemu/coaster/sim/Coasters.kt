@@ -36,6 +36,11 @@ data class CoasterSpec(
     val unloadStation: Boolean = false,
     /** A dispatch is held in the station until the lift is clear and the train on the course is stopped on its brakes (Millennium Force). */
     val dispatchHoldForCourse: Boolean = false,
+    /**
+     * A dispatch is held in the station until the lift is clear and the train ahead, out on the course, has passed this
+     * feature (a [planU]-style mark, e.g. "hill0"), so the lift train never has to stop at the crest (Magnum).
+     */
+    val dispatchReleaseMark: String? = null,
     /** If > 0, the MCBR is a tunnel block whose exit LSM launches trains to this speed (m/s). */
     val tunnelLaunch: Double = 0.0,
     /**
@@ -84,6 +89,28 @@ data class CoasterSpec(
     val valleyH: Double = 4.0,
     /** Height of the trim brakes and the turnaround after them. */
     val turnH: Double = 4.0,
+    /** Length of the trim brake run, metres (real hardware length, not stretched). */
+    val trimLen: Double = 30.0,
+    /** Trim brake deceleration, m/s². */
+    val trimDecel: Double = 5.0,
+    /** (climb, descent) run lengths of each [hillsM] hill, metres, unstretched; null = sized from the height and stretched. */
+    val hillRunsM: List<Pair<Double, Double>>? = null,
+    /** Run from the last valley up to the MCBR, metres, unstretched; 0 = sized from the height and stretched. */
+    val mcbrClimb: Double = 0.0,
+    /** MCBR brake run length, metres; 0 = sized from the entry speed. */
+    val mcbrLen: Double = 0.0,
+    /** Lift crest hold sensor, metres back from the end of the lift block (the crest is 10 m back). */
+    val crestSensorBack: Double = 20.0,
+    /**
+     * Turnaround after the trims as (metres past the trims, height) points; the hill run leading into it ends at
+     * [turnH], where the trims sit. Empty = a flat turnaround at [turnH].
+     */
+    val turnProfile: List<Pair<Double, Double>> = emptyList(),
+    /**
+     * Pins track features to fractions (0..1) of a real (OSM) layout, so they're drawn where they really are:
+     * "crest" (lift top), "hill<i>" (crest of [hillsM] i), "turn" / "turnEnd" (turnaround after the trims), "mcbr".
+     */
+    val planU: Map<String, Double> = emptyMap(),
     /** Top speed at the bottom of the first drop (m/s), held there by wheel scrub in the pull-out; 0 = none. */
     val dropSpeed: Double = 0.0,
     /** Fixed MCBR height (metres), instead of one sized from the energy left. */
@@ -111,13 +138,29 @@ object CoasterLibrary {
             note = "Giga coaster with cable lift. 4 blocks: load, lift, main course ending at the block brake before unload (the first brakes are trims), unload. Dispatch holds until the lift is clear and the course train is stopped on the brakes; then all three trains advance together."),
         CoasterSpec("magnum", "Magnum XL-200", ProfileType.LIFT, 62.5, liftSpeed = 6 / Units.MPH, // 6 mph chain
             hills1 = emptyList(), mcbrFrac = 0.4, hills2 = emptyList(),
-            // Return hills: 30 ft down to 15 ft. Valleys / tunnels at ground level; station 25 ft above grade.
-            hillsM = listOf(47.9, 24.4, 9.1, 8.2, 7.3, 6.4, 5.5, 4.6), trimAfter = 1, trimSpeed = 13.4, // trims on the turnaround bite every run (~35 -> 30 mph)
-            stationH = 7.6, mcbrHeight = 13.7, trackLength = 5106 * 0.3048, passSpeed = 8 / Units.MPH, valleyH = 62.5 - 59.3, turnH = 30.5,
+            // Heights after the pretzel come from the user's Coasteracc recording (baro altitude, airtime from the
+            // accelerometer, GPS mapped onto the OSM trace): seven airtime hills of 44/26/55/31/29/24/37 ft into the 45 ft MCBR.
+            // Valleys / tunnels at ground level; station 25 ft above grade.
+            hillsM = listOf(47.9, 24.4, 13.4, 7.9, 16.8, 9.4, 8.8, 7.3, 11.3),
+            // 30 ft of trims at the foot of the 80 ft hill, just before the pretzel's first (left-hand) lobe.
+            trimAfter = 1, trimSpeed = 23.0, trimLen = 9.1, trimDecel = 10.0, turnH = 4.5,
+            // Crest-to-crest spacing from the recording's hill-to-hill times and the OSM trace.
+            hillRunsM = listOf(95.0 to 95.0, 118.0 to 40.0, 32.0 to 30.0, 31.0 to 33.0, 37.0 to 33.0, 30.0 to 33.0, 30.0 to 31.0,
+                22.0 to 21.0, 22.0 to 20.0),
+            mcbrClimb = 22.0,
+            // Pretzel: in low along the left (under the span), climb round the tight left curve, then the gentle curve
+            // (~64 ft, the high point) passes OVER both the incoming and outgoing tracks (at 113 m); then it's downhill out of the
+            // pretzel, back UNDER that span (~227 m, ~30 ft) and into tunnel 2.
+            turnProfile = listOf(54.0 to 15.0, 83.0 to 18.5, 113.0 to 19.5, 150.0 to 16.5, 190.0 to 13.0, 227.0 to 9.0, 243.0 to 62.5 - 59.3),
+            planU = mapOf("crest" to 0.139, "hill0" to 0.248, "hill1" to 0.375, "turn" to 0.404, "turnEnd" to 0.544,
+                "hill4" to 0.69, "mcbr" to 0.862),
+            stationH = 7.6, mcbrHeight = 13.7, trackLength = 5106 * 0.3048, passSpeed = 20 / Units.MPH, mcbrLen = 20.0, crestSensorBack = 12.0,
+            // The PLC holds a dispatch until the train ahead crests the camelback: the lift train then tops the lift as the course clears.
+            dispatchReleaseMark = "hill0", valleyH = 62.5 - 59.3,
             preLift = 25.0, dropTo = 62.5 - 59.3, dropSpeed = 72 / Units.MPH, // drop bottoms out ~10 ft above grade
             ratedCapacity = 2000, /* RCDB: 2,000/h */ cars = 6, ridersPerCar = 6, layout = 1, seed = 4, park = "Cedar Point",
             note = "Out-and-back hyper coaster: slight decline into the 6 mph chain, 205 ft lift, 194.7 ft drop at 60° to 72 mph, " +
-                "157 ft camelback into tunnel 1, 80 ft speed hill, trim brakes into the 100 ft pretzel turnaround, six bunny hills (30-15 ft) through tunnels 2 and 3 to the MCBR, then the final brakes. Station 25 ft above grade."),
+                "157 ft camelback into tunnel 1, 80 ft hill, 30 ft of trim brakes into the pretzel turnaround (gentle curve ~64 ft over both tracks), tunnel 2, seven airtime hills (24-55 ft) through tunnel 3 to the MCBR, then the final brakes. Station 25 ft above grade."),
         CoasterSpec("gemini", "Gemini", ProfileType.LIFT, 38.4, liftSpeed = 4.0,
             hills1 = listOf(0.7, 0.5, 0.55), mcbrFrac = 0.45, hills2 = listOf(0.55, 0.4),
             ratedCapacity = 1650, /* one track; Cedar Point quotes 3,300/h for both */ cars = 5, ridersPerCar = 6, carLength = 2.4, layout = 2, seed = 12, park = "Cedar Point",
@@ -216,7 +259,7 @@ object CoasterLibrary {
             to((h - 2) / 0.5, h) // ~27 degree lift incline
             to(10.0, h + 0.5)
             liftEnd = s
-            liftCrest = s - 20
+            liftCrest = s - spec.crestSensorBack
             topS = s
             headAtTop = h + 0.5 + spec.liftSpeed * spec.liftSpeed / (2 * G)
             b2 = Block(1, "B2", "Lift Hill", BlockKind.LIFT, 45.0, s, null, null)
@@ -260,6 +303,8 @@ object CoasterLibrary {
 
         val blocks = mutableListOf(b2)
         fun nextTag() = "B${blocks.size + 2}"
+        // Track positions of named features, for pinning them to a real layout (CoasterSpec.planU).
+        val marks = mutableMapOf("crest" to topS)
 
         // ---- Course 1 (→ MCBR, if the ride has one) ----
         var head1 = headAtTop
@@ -271,12 +316,25 @@ object CoasterLibrary {
             // Real heights get a slimmer margin: the hills are what the ride actually clears.
             val v0 = spec.valleyH
             val room = avail1() - v0 - if (spec.hillsM != null) 5 else 9
+            val intoTurn = i == spec.trimAfter && spec.turnProfile.isNotEmpty()
             if (room >= 2) {
                 val h = if (spec.hillsM != null) minOf(f, v0 + room) else v0 + f * room
                 val run = ((h - v0) * 1.2 + 18) * k
-                to(run, h); to(run, v0)
+                val (up, down) = spec.hillRunsM?.getOrNull(i) ?: (run to run)
+                to(up, h); marks["hill$i"] = s; to(down, if (intoTurn) spec.turnH else v0)
             }
-            if (i == spec.trimAfter) {
+            if (intoTurn) {
+                // Trims at the foot of the hill, then the shaped turnaround.
+                val t0 = s
+                to(spec.trimLen, spec.turnH)
+                trims += Trim("Trim Brakes", t0, s, spec.trimSpeed, spec.trimDecel)
+                val trimmed = spec.turnH + spec.trimSpeed * spec.trimSpeed / (2 * G)
+                if (trimmed < head1 - LOSS * 0.5 * (s - c1)) { head1 = trimmed; c1 = s }
+                marks["turn"] = s
+                var d0 = 0.0
+                for ((d, h) in spec.turnProfile) { to(d - d0, h); d0 = d }
+                marks["turnEnd"] = s
+            } else if (i == spec.trimAfter) {
                 // Trims up on the (elevated) turnaround.
                 if (spec.turnH != v0) to((kotlin.math.abs(spec.turnH - v0) * 1.5 + 10) * k, spec.turnH)
                 val t0 = s
@@ -307,11 +365,12 @@ object CoasterLibrary {
             head2 = tunnelH + spec.tunnelLaunch * spec.tunnelLaunch / (2 * G)
         } else if (spec.hasMcbr) {
             val mcbrH = if (spec.mcbrHeight > 0) spec.mcbrHeight else maxOf(4 + spec.mcbrFrac * maxOf(0.0, avail1() - 13), spec.stationH + 1)
-            to(((mcbrH - 4) * 1.3 + 20) * k, mcbrH)
+            to(if (spec.mcbrClimb > 0) spec.mcbrClimb else ((mcbrH - 4) * 1.3 + 20) * k, mcbrH)
             val v2 = 2 * G * maxOf(4.0, avail1() - mcbrH)
             val bl1 = (v2 / 10 + 15).coerceIn(45.0, 300.0)
             val mcbrFlat = s
-            to(bl1 + 10, mcbrH)
+            marks["mcbr"] = s
+            to(if (spec.mcbrLen > 0) spec.mcbrLen else bl1 + 10, mcbrH)
             blocks += Block(blocks.size + 1, nextTag(), "Mid-Course Brake", BlockKind.BRAKE_RUN, blocks.last().end, s, s - 5, mcbrFlat + 5)
             c2 = s
             head2 = mcbrH + 0.2 // worst case: leaves the MCBR from a stop on the drive tires (2 m/s)
@@ -392,7 +451,7 @@ object CoasterLibrary {
                 // Switch rides: unload and load share the station building; the junction matches RideProfile.spikeJunction.
                 val unloadStart = blocks.firstOrNull { b -> b.kind == BlockKind.UNLOAD }?.start ?: finalEnd
                 realPlan(it, topS, if (it.switchAt >= 0) unloadStart else finalEnd, b1.stopPos!!, 70.0 - (spec.trainLengthM) - 11.0, length,
-                    45.0 + spec.preLift)
+                    45.0 + spec.preLift, spec.planU.mapNotNull { (k, u) -> marks[k]?.let { u to it } })
             }
                 ?: plan(spec, topS, finalFlat, finalEnd),
             liftStart = if (spec.type == ProfileType.LIFT) 45.0 + spec.preLift else 0.0,
@@ -404,6 +463,7 @@ object CoasterLibrary {
             rollbackSpeed = rollback,
             trims = trims,
             pullOut = pullOut,
+            dispatchReleaseS = spec.dispatchReleaseMark?.let { marks[it] } ?: -1.0,
         )
     }
 
@@ -416,16 +476,21 @@ object CoasterLibrary {
     private fun realPlan(
         real: RealLayouts.Layout, topS: Double, stationStart: Double, loadStop: Double, junction: Double, length: Double,
         liftStart: Double,
+        /** (real fraction, course s) pins for features after the lift crest; a pin at s = [topS] moves the crest. */
+        pins: List<Pair<Double, Double>> = emptyList(),
     ): List<Triple<Double, Double, Double>> {
         val liftLen = (topS - liftStart) / real.osmLengthM
-        val crest = if (real.liftTagged) real.liftEnd else minOf(real.liftEnd, real.liftStart + liftLen)
+        val crest = pins.firstOrNull { it.second == topS }?.first
+            ?: if (real.liftTagged) real.liftEnd else minOf(real.liftEnd, real.liftStart + liftLen)
+        val course = pins.filter { it.second > topS && it.first > crest }.sortedBy { it.first }.map { (u, s) -> u to length + s }
         // (real fraction -> simulated s) anchors; s runs past [length] and is wrapped afterwards.
         val anchors = if (real.switchAt >= 0) {
             // Station building holds unload and load; the switch track sits between the load platform and the launch line.
             listOf(0.0 to stationStart, real.stationEnd to length + loadStop + 2, real.switchAt to length + junction,
                 crest to length + topS, 1.0 to stationStart + length)
         } else {
-            listOf(0.0 to stationStart, real.liftStart to length + liftStart, crest to length + topS, 1.0 to stationStart + length)
+            listOf(0.0 to stationStart, real.liftStart to length + liftStart, crest to length + topS) + course +
+                listOf(1.0 to stationStart + length)
         }
         fun map(u: Double): Double {
             for (k in 1 until anchors.size) {

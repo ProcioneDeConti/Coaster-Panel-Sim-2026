@@ -421,6 +421,12 @@ fun SimPage(vm: SimViewModel, onOpenBuilder: () -> Unit, onOpenEditor: () -> Uni
                     HmiLabel("ride runs itself; maintenance fixes faults", 10.sp, color = Hmi.Dim)
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    val spiels = vm.soundEnabled[SoundKind.DESK_PA] != false
+                    HmiLabel("Auto spiels", 11.sp, modifier = Modifier.width(90.dp))
+                    HmiButton(if (spiels) "ON" else "OFF", active = spiels, activeColor = Hmi.Info) { vm.soundEnabled[SoundKind.DESK_PA] = !spiels }
+                    HmiLabel("station announcements in desk mode", 10.sp, color = Hmi.Dim)
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                     HmiLabel("Debug tools", 11.sp, modifier = Modifier.width(90.dp))
                     HmiButton(if (vm.debugTools) "ON" else "OFF", active = vm.debugTools, activeColor = Hmi.Warn) {
                         vm.debugTools = !vm.debugTools

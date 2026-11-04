@@ -323,7 +323,10 @@ class RideCycleTest {
         assertEquals(0.0, plc.plant.trains[0].v, 0.01)
     }
 
-    /** Dispatching with no load time, trains should not queue on the course brakes (only at the station). */
+    /**
+     * Dispatching with no load time, trains should not queue on the course brakes (only at the station and the approach
+     * behind it). Magnum's PLC holds the dispatch for the train ahead, so its lift train never stops at the crest.
+     */
     @Test fun fastDispatchDoesNotStackCourseBrakes() {
         for (id in listOf("thunder", "magnum")) {
             val p = RideProfile.create(CoasterLibrary.byId(id))
@@ -332,7 +335,10 @@ class RideCycleTest {
             i.mode = KeyMode.AUTO; i.singleButtonDispatch = true; i.loadFootSwitch = true; i.unloadFootSwitch = true
             press(plc) { i.powerOn = it }; press(plc) { i.rideStart = it }; step(plc, 7.0)
             var courseWait = 0.0
-            val mid = (1 until p.blocks.size).filter { p.blocks[it].kind == com.abemu.coaster.sim.BlockKind.BRAKE_RUN && it != p.transferBlock }
+            var crestWait = 0.0
+            val mid = (1 until p.blocks.size).filter {
+                p.blocks[it].kind == com.abemu.coaster.sim.BlockKind.BRAKE_RUN && it != p.transferBlock && !p.blocks[it].approach
+            }
             repeat(1200 * 5) {
                 if (plc.dispatchReady) { press(plc) { i.dispatchL = it } }
                 else if (plc.trainInStation && !plc.releaseLatch[0] && !plc.loadReady) {
@@ -340,7 +346,9 @@ class RideCycleTest {
                 }
                 step(plc, 0.2)
                 for (b in mid) if (plc.plant.trainAtStop(b)?.let { kotlin.math.abs(it.v) < 0.05 } == true) courseWait += 0.2
+                if (plc.holdT[1] > 0) crestWait += 0.2
             }
+            if (id == "magnum") assertEquals("magnum: lift train held at the crest", 0.0, crestWait, 0.01)
             val perDispatch = courseWait / plc.dispatchCount
             assertTrue("$id: ${"%.1f".format(perDispatch)} s per dispatch held on course brakes", perDispatch < 5.0)
         }

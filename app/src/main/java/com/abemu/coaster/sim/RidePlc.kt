@@ -131,7 +131,7 @@ class RidePlc(val plant: Plant) {
     /** A dispatch press would be accepted (sent now, or held on a hold ride); equals [dispatchReady] elsewhere. */
     var stationReady = false; private set
     /** Block after the lift, which must be clear before a held dispatch releases; -1 if the ride has no such hold. */
-    val courseBlock = if (profile.spec.dispatchHoldForCourse)
+    val courseBlock = if (profile.spec.dispatchHoldForCourse || profile.dispatchReleaseS >= 0)
         profile.blocks.indexOfFirst { it.kind == BlockKind.LIFT }.let { if (it < 0) -1 else (it + 1) % profile.blocks.size } else -1
     var statusText = ""; private set
 
@@ -304,11 +304,20 @@ class RidePlc(val plant: Plant) {
      * No train out on the course: the block is empty, its train is stopped at the block brake ready to advance, or
      * it is already leaving (nose into unload, only its tail still on the brakes).
      */
-    private fun courseClear() = !entry(courseBlock) && (occ[courseBlock] == -1 || leaving[courseBlock] ||
-        plant.trainAtStop(courseBlock)?.let { it.id == occ[courseBlock] && abs(it.v) < 0.05 } == true)
+    private fun courseClear() = if (profile.dispatchReleaseS >= 0) courseReleased() else
+        !entry(courseBlock) && (occ[courseBlock] == -1 || leaving[courseBlock] ||
+            plant.trainAtStop(courseBlock)?.let { it.id == occ[courseBlock] && abs(it.v) < 0.05 } == true)
+    /** Dispatch-release prox: the course is empty, or its train has passed the release point. */
+    private fun courseReleased(): Boolean {
+        val tr = occ[courseBlock].takeIf { it != -1 }?.let { id -> plant.trains.firstOrNull { it.id == id } } ?: return !entry(courseBlock)
+        val blk = profile.blocks[courseBlock]
+        return profile.ahead(blk.start, tr.s) >= profile.ahead(blk.start, profile.dispatchReleaseS)
+    }
     /** Lift clear and no train on the course: a held dispatch may go, and the trains behind follow it in (moving-block stations). */
     private fun trackClear() = nextClear(0) && courseClear()
-    private val holdBlocks get() = profile.blocks[1].let { "${it.tag} ${it.name} clear" } + " and " + profile.blocks[courseBlock].let { "${it.tag} train on the brakes" }
+    private val holdBlocks get() = profile.blocks[1].let { "${it.tag} ${it.name} clear" } + " and " + profile.blocks[courseBlock].let {
+        if (profile.dispatchReleaseS >= 0) "${it.tag} train past the release point" else "${it.tag} train on the brakes"
+    }
 
     private fun dispatch() {
         latch(0)
