@@ -62,14 +62,14 @@ Android 8.0+, built for large landscape tablets (designed on a Galaxy Tab S9 Ult
   restraints, track clear sounder and fault horn.
 - **Radio chatter** from the supervisor, maintenance and other areas, with recorded voices. Some calls need an
   answer on the push-to-talk.
-- **Station music, station PA spiels**, haptics, and a **night mode** with track lighting.
+- **Station music, station PA spiels**, haptics, and a **night mode** that dims the HMI and console.
 - **Guest queue** with a posted wait time. Guests balk at long waits and walk off the line when the ride is down.
 - **Desk mode**: a virtual crew runs the ride by itself and maintenance fixes its faults, so the tablet can sit on
   a desk cycling trains.
 
 | Night mode | Park ops |
 |---|---|
-| ![Night mode: dimmed HMI, glowing lamps, track lighting](docs/screenshots/night.png) | ![Guest queue, weather station, lightning detector](docs/screenshots/park-ops.png) |
+| ![Night mode: dimmed HMI and console, glowing lamps](docs/screenshots/night.png) | ![Guest queue, weather station, lightning detector](docs/screenshots/park-ops.png) |
 
 ### Remote instructor and web map
 Turn on **Web map** on the instructor page and any browser on the same network can open a live plan view at

@@ -505,15 +505,6 @@ fun PlanDiagram(
         }
         // Rails/centreline
         drawPath(seg(0.0, 0.0), Color(0xFF0F1A24), style = Stroke(1.5f))
-        if (night) {
-            // Track lighting: LED strips along the whole circuit, slowly chasing and shifting colour.
-            val ms = System.currentTimeMillis()
-            val hue = (ms / 60 % 360).toFloat()
-            val full = seg(0.0, 0.0)
-            drawPath(full, Color.hsv(hue, 0.8f, 1f).copy(alpha = 0.18f), style = Stroke(20f, cap = StrokeCap.Round))
-            drawPath(full, Color.hsv((hue + 40) % 360, 0.7f, 1f).copy(alpha = 0.85f),
-                style = Stroke(2.5f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(4f, 10f), -(ms / 25 % 14).toFloat())))
-        }
 
         // Swing launch: spike line behind the switch track, and the switch table itself
         if (profile.planSpike.isNotEmpty()) {

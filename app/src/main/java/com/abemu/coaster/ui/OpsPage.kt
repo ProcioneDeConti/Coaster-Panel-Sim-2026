@@ -275,7 +275,7 @@ private fun WeatherFrame(vm: SimViewModel, instructor: Boolean) {
                 HmiButton(l.label, Modifier.weight(1f), active = vm.lighting == l, activeColor = Hmi.Info, fontSize = 10.sp) { vm.lighting = l }
             }
         }
-        HmiLabel("Night: the console and HMI dim, lit lamps glow, and the plan view shows the track lighting.",
+        HmiLabel("Night: the console and HMI dim and lit lamps glow.",
             10.sp, color = Hmi.Dim)
     }
     HmiFrame("WEATHER (INSTRUCTOR)" + if (!instructor) "  – log in to change" else "") {
