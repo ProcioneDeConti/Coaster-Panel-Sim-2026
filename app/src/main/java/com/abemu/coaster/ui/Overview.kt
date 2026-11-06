@@ -224,6 +224,8 @@ fun TrackDiagram(plc: RidePlc, modifier: Modifier = Modifier, ghost: RideProfile
     val profile = plc.profile
     val plant = plc.plant
     val blink = flasher()
+    // Track and ghost outlines only change with the ride or the canvas size: build them once, not every frame.
+    val outline = remember(profile, ghost) { TrackOutlineCache() }
     Canvas(modifier.background(Color(0xFF0F1A24))) {
         val padL = 16f
         val padR = 16f
@@ -259,19 +261,24 @@ fun TrackDiagram(plc: RidePlc, modifier: Modifier = Modifier, ghost: RideProfile
         }
 
         // Track
-        val path = Path()
-        var s = 0.0
-        path.moveTo(x(0.0), y(0.0))
-        while (s <= profile.length) { path.lineTo(x(s), y(s)); s += 2.0 }
-        // Generated track before tags reshaped it (editor preview)
-        if (ghost != null) {
-            val gp = Path()
-            var g = 0.0
-            gp.moveTo(x(0.0), (bottom - ghost.height(0.0) / maxH * (bottom - top)).toFloat())
-            while (g <= profile.length) { gp.lineTo(x(g), (bottom - ghost.height(g) / maxH * (bottom - top)).toFloat()); g += 2.0 }
-            drawPath(gp, Color(0xFF607D8B), style = Stroke(2f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(5f, 5f))))
+        if (outline.size != size) {
+            outline.size = size
+            outline.track = Path().apply {
+                var s = 0.0
+                moveTo(x(0.0), y(0.0))
+                while (s <= profile.length) { lineTo(x(s), y(s)); s += 2.0 }
+            }
+            // Generated track before tags reshaped it (editor preview)
+            outline.ghost = ghost?.let { gh ->
+                Path().apply {
+                    var g = 0.0
+                    moveTo(x(0.0), (bottom - gh.height(0.0) / maxH * (bottom - top)).toFloat())
+                    while (g <= profile.length) { lineTo(x(g), (bottom - gh.height(g) / maxH * (bottom - top)).toFloat()); g += 2.0 }
+                }
+            }
         }
-        drawPath(path, Color(0xFF90A4AE), style = Stroke(4f, cap = StrokeCap.Round))
+        outline.ghost?.let { drawPath(it, Color(0xFF607D8B), style = Stroke(2f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(5f, 5f)))) }
+        drawPath(outline.track!!, Color(0xFF90A4AE), style = Stroke(4f, cap = StrokeCap.Round))
 
         // Lift chain / LSM section
         if (profile.type == ProfileType.LIFT) {
@@ -369,6 +376,13 @@ fun TrackDiagram(plc: RidePlc, modifier: Modifier = Modifier, ghost: RideProfile
     }
 }
 
+
+/** Side-elevation track outlines for [TrackDiagram], rebuilt when the canvas size changes. */
+private class TrackOutlineCache {
+    var size = Size.Unspecified
+    var track: Path? = null
+    var ghost: Path? = null
+}
 
 /** Maps the 100 x 56 plan box onto a canvas of the given size. */
 class PlanTransform(val profile: com.abemu.coaster.sim.RideProfile, val width: Float, val height: Float) {

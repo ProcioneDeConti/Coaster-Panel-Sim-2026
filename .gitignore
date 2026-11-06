@@ -8,3 +8,6 @@ local.properties
 tools/spiels/radio_raw/
 tools/osm/data/
 tools/recordings/
+keystore.properties
+*.jks
+*.keystore

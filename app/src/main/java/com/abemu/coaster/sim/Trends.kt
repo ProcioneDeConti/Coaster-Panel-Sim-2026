@@ -22,10 +22,13 @@ class TrendChannel(val name: String, val unit: String, val capacity: Int) {
     fun clear() { count = 0; head = 0 }
 }
 
+private const val MAX_TRAINS = 6
+
 /** Historian: samples ride signals every [period] seconds of simulated time (10 minutes kept). */
 class TrendRecorder(val period: Double = 0.5) {
     private val cap = (600 / period).toInt()
-    val trainSpeed = List(3) { TrendChannel("Train ${it + 1}", "mph", cap) }
+    /** One channel per train id (paired-station rides run up to six). */
+    val trainSpeed = List(MAX_TRAINS) { TrendChannel("Train ${it + 1}", "mph", cap) }
     val drive = TrendChannel("Lift chain / LSM", "mph", cap)
     val air = TrendChannel("Main air", "psi", cap)
     val liftCurrent = TrendChannel("Lift motor", "A", cap)
@@ -39,7 +42,7 @@ class TrendRecorder(val period: Double = 0.5) {
         acc -= period
         val p = plc.plant
         val prof = plc.profile
-        for (i in 0 until 3) trainSpeed[i].add(p.trains.firstOrNull { it.id == i + 1 }?.let { Units.mph(abs(it.v)).toFloat() } ?: 0f)
+        for (i in 0 until MAX_TRAINS) trainSpeed[i].add(p.trains.firstOrNull { it.id == i + 1 }?.let { Units.mph(abs(it.v)).toFloat() } ?: 0f)
         drive.add(
             if (prof.type == ProfileType.LIFT) Units.mph(p.chainSpeed).toFloat()
             else p.trains.maxOfOrNull { if (prof.blockAt(it.s).kind == BlockKind.LAUNCH) Units.mph(abs(it.v)) else 0.0 }?.toFloat() ?: 0f,

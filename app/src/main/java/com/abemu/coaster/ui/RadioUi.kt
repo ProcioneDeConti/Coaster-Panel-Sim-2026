@@ -27,6 +27,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -85,10 +86,18 @@ fun RadioPlayer(vm: SimViewModel) {
     val player = remember { arrayOfNulls<MediaPlayer>(1) }
     // Recorded variants still to be played per call, so a variant does not repeat until all have been heard.
     val variantBags = remember { HashMap<String, MutableList<String>>() }
+    val visible by rememberUpdatedState(rememberAppVisible())
     DisposableEffect(Unit) { onDispose { player[0]?.release(); player[0] = null; RadioState.onAir = null } }
     LaunchedEffect(Unit) {
         while (true) {
             delay(250)
+            if (!visible) {
+                // Off screen: cut the call on air; queued calls wait until the app is back.
+                player[0]?.let { runCatching { it.stop() }; it.release() }
+                player[0] = null
+                RadioState.onAir = null
+                continue
+            }
             if (RadioState.onAir != null) continue
             val forced = RadioState.preview.removeFirstOrNull()
             val base = forced ?: vm.radio.next() ?: continue

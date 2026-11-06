@@ -58,9 +58,18 @@ class AlarmManager {
         alarms[code]?.condition = present
     }
 
+    /** As [condition], but only builds the message while the condition is present (this runs every scan). */
+    inline fun condition(code: String, severity: Severity, present: Boolean, text: () -> String) {
+        if (present) raise(code, text(), severity)
+        setCondition(code, present)
+    }
+
+    @PublishedApi internal fun setCondition(code: String, present: Boolean) { alarms[code]?.condition = present }
+
     fun info(code: String, text: String) {
         historyVersion++
         history.addFirst(AlarmEvent(now(), code, text, Severity.INFO, "EVENT"))
+        while (history.size > 300) history.removeLast()
     }
 
     /** Fault reset: clears every latched alarm whose condition is gone. */

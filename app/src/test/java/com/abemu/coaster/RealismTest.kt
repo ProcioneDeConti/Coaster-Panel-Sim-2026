@@ -1,6 +1,7 @@
 package com.abemu.coaster
 
 import com.abemu.coaster.sim.CoasterLibrary
+import com.abemu.coaster.sim.GuestQueue
 import com.abemu.coaster.sim.KeyMode
 import com.abemu.coaster.sim.LaunchState
 import com.abemu.coaster.sim.Plant
@@ -128,6 +129,42 @@ class RealismTest {
             assertTrue("${sp.id} derated launch rolled back in a 20 mph headwind", launchOnce(sp.id, 9.0, derate = true).launchState != LaunchState.ROLLBACK)
             assertEquals("${sp.id} derated launch in a 36 mph headwind", LaunchState.ROLLBACK, launchOnce(sp.id, 16.0, derate = true).launchState)
         }
+    }
+
+    @Test fun rollbackSurvivesPowerCycle() {
+        // Cycling ride power during a rollback used to drop the launch state while the ROLLBACK alarm stayed
+        // latched, so it could never be inspected or reset and the ride refused to start until it was rebuilt.
+        val plc = launchOnce("stormchaser", 16.0, derate = true)
+        assertEquals(LaunchState.ROLLBACK, plc.launchState)
+        plc.plant.windMs = 0.0
+        step(plc, 30.0)
+        press(plc) { plc.inputs.powerOff = it }
+        press(plc) { plc.inputs.powerOn = it }
+        assertEquals(LaunchState.ROLLBACK, plc.launchState)
+        assertTrue(plc.rollbackAtRest)
+        plc.signOffRollbackInspection()
+        press(plc) { plc.inputs.faultReset = it }
+        assertTrue("rollback alarm still latched", !plc.alarms.isActive("ROLLBACK"))
+        assertTrue(plc.relaunchHold)
+        press(plc) { plc.inputs.rideStart = it }
+        step(plc, 8.0)
+        assertEquals(RideState.RUNNING, plc.state)
+    }
+
+    @Test fun queueBoardsAfterRideRebuild() {
+        // A rebuilt controller restarts its dispatch count at 0; the queue must not wait for it to catch up.
+        val q = GuestQueue()
+        val a = RidePlc(Plant(RideProfile.create(CoasterLibrary.default(ProfileType.LIFT)), 1))
+        start(a)
+        q.update(600.0, a) // let a line build up
+        repeat(2) { assertTrue(dispatch(a)); q.update(dt, a) }
+        val before = q.riders
+        assertTrue(before > 0)
+        val b = RidePlc(Plant(RideProfile.create(CoasterLibrary.default(ProfileType.LIFT)), 1))
+        start(b)
+        q.update(dt, b)
+        assertTrue(dispatch(b)); q.update(dt, b)
+        assertTrue("no riders boarded after the rebuild", q.riders > before)
     }
 
     @Test fun rollbackRecoveryNeedsInspectionAndAuthorization() {

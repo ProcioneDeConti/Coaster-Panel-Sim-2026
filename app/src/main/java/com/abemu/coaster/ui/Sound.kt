@@ -6,7 +6,9 @@ import android.media.AudioTrack
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import com.abemu.coaster.SimViewModel
 import com.abemu.coaster.sim.BlockKind
 import com.abemu.coaster.sim.LaunchState
@@ -142,6 +144,11 @@ class RideAudio {
         val clackModeD = doubleArrayOf(0.034, 0.03, 0.026, 0.022, 0.018, 0.015, 0.012, 0.01, 0.008, 0.006)
         val cF = DoubleArray(10)
         val cD = DoubleArray(10)
+        // Click resonator bands: centre frequencies, and per-click filter coefficients (set when a click starts,
+        // so the per-sample loop does no allocation or trig for them).
+        val bandF = doubleArrayOf(95.0, 238.0, 575.0, 1050.0, 6500.0, 8900.0)
+        val bandG = DoubleArray(6)
+        val bandDamp = DoubleArray(6)
         var cPitch = 1.0
         var cLevel = 1.0
         var cDecay = 1.0
@@ -176,6 +183,10 @@ class RideAudio {
         var windLp2 = 0.0
         var airHi = 0.0
         var gustPh = rng.nextDouble() * 10
+        // Idle: after a second with nothing sounding (the reverb tail has died away) the track is paused and the
+        // thread just polls, instead of synthesising silence 44,100 times a second.
+        var quietChunks = 0
+        var playing = true
 
         while (running) {
             if (hissTrigger != hissSeen) {
@@ -188,6 +199,20 @@ class RideAudio {
                 thunkAt = clickAt[2] + 0.3 * vary(0.2)
                 tPitch = vary(0.06); tLevel = vary(0.12)
             }
+            val busy = trackClear || faultAlarm || ambience || cue != null || activeCue != null || env > 0.0 ||
+                hornEnv > 0.0005 || liftLevel > 0.0 || liftAmp > 0.001 || clackRateHz > 0.1 || (clackT >= 0 && clackT < 0.12) ||
+                lsmLevel >= 0 || lsmAmp > 0.001 || chimeTrigger != chimeSeen || chimeT >= 0 || hissEnv > 0.001 || thumpT >= 0
+            quietChunks = if (busy) 0 else quietChunks + 1
+            if (quietChunks > 50) {
+                if (playing) {
+                    track.pause(); track.flush(); playing = false
+                    erBuf.fill(0.0); combBuf.forEach { it.fill(0.0) }; apBuf.forEach { it.fill(0.0) }; combLp.fill(0.0)
+                    svLow.fill(0.0); svBand.fill(0.0)
+                }
+                Thread.sleep(20)
+                continue
+            }
+            if (!playing) { track.play(); playing = true }
             for (i in chunk.indices) {
                 n++
                 val ms = n * 1000 / rate
@@ -253,6 +278,11 @@ class RideAudio {
                         // The ping varies on its own too: each dog strikes the rack a little differently.
                         pLevel = vary(0.3); pPitch = vary(0.02); pRing = vary(0.2); pBal = vary(0.25)
                         for (k in 0 until 10) { cF[k] = clackModeF[k] * cPitch * vary(0.02); cD[k] = clackModeD[k] * cDecay }
+                        for (k in 0 until 6) {
+                            val fc = bandF[k] * cPitch * (if (k >= 4) pPitch else 1.0)
+                            bandG[k] = 2 * sin(PI * fc / rate)
+                            bandDamp[k] = when (k) { 0 -> 0.7; 4, 5 -> 0.085 / pRing; else -> 0.25 }
+                        }
                     }
                 }
                 var clackDry = 0.0
@@ -267,11 +297,9 @@ class RideAudio {
                     // fairly broad (Q ~4) so they add bite without ringing like glass; then the ping - ~6.5 kHz and
                     // ~8.9 kHz, narrow (Q ~12) - which is the only part sent to the reverb.
                     for (k in 0 until 6) {
-                        val fc = doubleArrayOf(95.0, 238.0, 575.0, 1050.0, 6500.0, 8900.0)[k] * cPitch * (if (k >= 4) pPitch else 1.0)
-                        val damp = when (k) { 0 -> 0.7; 4, 5 -> 0.085 / pRing; else -> 0.25 }
-                        val g = 2 * sin(PI * fc / rate)
+                        val g = bandG[k]
                         svLow[k] += g * svBand[k]
-                        val high = burst - svLow[k] - damp * svBand[k]
+                        val high = burst - svLow[k] - bandDamp[k] * svBand[k]
                         svBand[k] += g * high
                     }
                     // Thud: low-passed noise (~200 Hz) with a fast decay - mass without a pitch.
@@ -437,6 +465,7 @@ object SoundTest {
 @Composable
 fun RideSounds(vm: SimViewModel) {
     val audio = remember { RideAudio() }
+    val visible by rememberUpdatedState(rememberAppVisible())
     DisposableEffect(Unit) { SoundTest.audio = audio; onDispose { SoundTest.audio = null; audio.release() } }
     LaunchedEffect(Unit) {
         var lastDispatch = vm.plc.dispatchCount
@@ -453,6 +482,12 @@ fun RideSounds(vm: SimViewModel) {
                 lastPlc = plc
                 lastBrakes = plant.brakes.map { it.isOpen }
                 lastDispatch = plc.dispatchCount
+            }
+            // Off screen the simulation is paused: silence everything (a frozen horn or lift would play on).
+            if (!visible) {
+                audio.trackClear = false; audio.faultAlarm = false; audio.ambience = false
+                audio.liftLevel = 0.0; audio.clackRateHz = 0.0; audio.lsmLevel = -1.0
+                continue
             }
             fun on(k: SoundKind) = vm.soundOn && vm.soundEnabled[k] != false
             audio.volume = vm.volume

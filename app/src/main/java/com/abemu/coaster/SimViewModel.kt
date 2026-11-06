@@ -117,6 +117,12 @@ class SimViewModel : ViewModel() {
 
     private val scanDt = 0.02
 
+    /**
+     * Set by the activity while it is off screen: the ride, weather, queue and radio freeze and resume where they
+     * left off (no catch-up), so a backgrounded tablet doesn't keep a core busy.
+     */
+    @Volatile var paused = false
+
     init {
         viewModelScope.launch {
             var last = System.nanoTime()
@@ -125,7 +131,8 @@ class SimViewModel : ViewModel() {
             while (true) {
                 // Fixed 30 Hz tick, not the display rate: the sim catches up in 20 ms scans, and redrawing
                 // at 120 Hz kept the main thread and GPU busy full-time (more than a whole core at idle).
-                delay(33)
+                delay(if (paused) 250L else 33L)
+                if (paused) { last = System.nanoTime(); continue }
                 val now = System.nanoTime()
                 acc = (acc + (now - last) / 1e9 * timeScale).coerceAtMost(0.5)
                 last = now

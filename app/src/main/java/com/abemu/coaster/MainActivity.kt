@@ -39,6 +39,14 @@ class MainActivity : ComponentActivity() {
         com.abemu.coaster.dev.CustomRideStore.load(this)
         vm.reconfigure()
         Haptics.init(this)
+        // Freeze the simulation while the app is off screen.
+        lifecycle.addObserver(androidx.lifecycle.LifecycleEventObserver { _, e ->
+            when (e) {
+                androidx.lifecycle.Lifecycle.Event.ON_STOP -> vm.paused = true
+                androidx.lifecycle.Lifecycle.Event.ON_START -> vm.paused = false
+                else -> Unit
+            }
+        })
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         // Nothing here needs a fast panel (the UI redraws at 30 fps at most): ask for the slowest refresh mode.
         if (Build.VERSION.SDK_INT >= 30) {

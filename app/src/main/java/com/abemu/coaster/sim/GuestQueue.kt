@@ -33,6 +33,7 @@ class GuestQueue(seed: Int = 11) {
     private var leaveAcc = 0.0
     private var postT = 0.0
     private var lastDispatchCount = -1
+    private var lastPlc: RidePlc? = null
     private var downT = 0.0
     /** (time, riders) for the throughput window. */
     private val loads = ArrayDeque<Pair<Double, Int>>()
@@ -74,10 +75,13 @@ class GuestQueue(seed: Int = 11) {
 
         // Boarding: each dispatch takes the train that was loaded in the station. Single-rider gaps leave a few seats empty.
         val dc = plc.dispatchCount
-        if (lastDispatchCount < 0) lastDispatchCount = dc
+        // A rebuilt controller (train count change, activity restart) starts counting from 0 again.
+        if (lastDispatchCount < 0 || plc !== lastPlc) lastDispatchCount = dc
+        lastPlc = plc
         if (dc > lastDispatchCount) {
             repeat(dc - lastDispatchCount) {
-                val seats = plc.profile.ridersPerDispatch
+                // The count goes up once per train leaving (a paired station's rear train counts on its own).
+                val seats = plc.profile.ridersPerTrain
                 val fill = (seats - rnd.nextInt(0, maxOf(1, seats / 10) + 1)).coerceAtLeast(0)
                 val n = minOf(inLine, fill)
                 inLine -= n

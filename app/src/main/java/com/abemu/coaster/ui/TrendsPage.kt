@@ -34,12 +34,18 @@ import com.abemu.coaster.sim.TrendChannel
 
 private data class Series(val ch: TrendChannel, val color: Color)
 
+private val trainTrendColors = listOf(
+    Color(0xFF1565C0), Color(0xFF8E24AA), Color(0xFF00897B), Color(0xFFC62828), Color(0xFF6D4C41), Color(0xFF558B2F),
+)
+
 @Composable
 fun TrendsPage(vm: SimViewModel) {
     vm.frame.longValue
     val t = vm.trends
     var minutes by remember { mutableIntStateOf(5) }
-    val speedSeries = t.trainSpeed.mapIndexed { i, c -> Series(c, listOf(Color(0xFF1565C0), Color(0xFF8E24AA), Color(0xFF00897B))[i]) } +
+    // Only the trains this ride has (circuit + storage); ids run 1..n.
+    val fleet = (vm.plc.plant.trains.maxOfOrNull { it.id } ?: 0).coerceAtLeast(vm.plc.plant.trains.size + vm.plc.plant.stored)
+    val speedSeries = t.trainSpeed.take(fleet.coerceIn(1, t.trainSpeed.size)).mapIndexed { i, c -> Series(c, trainTrendColors[i]) } +
         Series(t.drive, Color(0xFFE65100))
     Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
