@@ -30,7 +30,6 @@ import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withStyle
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.Path
@@ -592,11 +591,6 @@ fun PlanDiagram(
                 val b = head - dir * back
                 moveTo((a + nrm * half).x, (a + nrm * half).y); lineTo((b + nrm * half).x, (b + nrm * half).y)
                 lineTo((b - nrm * half).x, (b - nrm * half).y); lineTo((a - nrm * half).x, (a - nrm * half).y); close()
-            }
-            if (night && t.spike <= 0) {
-                // Headlight: a pool of light ahead of the train.
-                val c0 = head + dir * 26f
-                drawCircle(Brush.radialGradient(listOf(Color(0x99FFF3C4), Color.Transparent), c0, 30f), 30f, c0)
             }
             drawPath(rect(7f, 25f, 10f), ring)
             drawPath(rect(4f, 22f, 7f), c)

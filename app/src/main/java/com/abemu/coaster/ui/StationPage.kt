@@ -188,17 +188,20 @@ private fun StationFrame(plc: RidePlc) {
                             drawCircle(Color(0xFFF2D7B6), minOf(seat.width, seat.height) * 0.26f, so + Offset(seat.width * 0.6f, seat.height / 2))
                     }
                     if (!plant.rowLockSensor(r)) drawRoundRect(Color(0xFFFF5252), o, sz, corner, style = Stroke(2.5f * u))
-                    // Operator's push-pull check: a green tick badge on the car.
-                    if (plc.carChecked[r]) {
-                        val c = Offset(o.x + sz.width - 6 * u, o.y - 2 * u)
-                        drawCircle(Color.White, 7 * u, c)
-                        drawCircle(Locked, 6 * u, c)
-                        drawPath(Path().apply {
-                            moveTo(c.x - 3 * u, c.y); lineTo(c.x - 0.5f * u, c.y + 2.5f * u); lineTo(c.x + 3.5f * u, c.y - 2.5f * u)
-                        }, Color.White, style = Stroke(1.6f * u, cap = StrokeCap.Round))
-                    }
                 }
-            } else {
+            }
+            // Operator's push-pull check: a green tick badge on the car's rear corner. Drawn outside the mirror
+            // transform (only its position is mirrored) so the tick never reads backwards on right-exit stations.
+            if (st != null) for (r in 0 until rowsN) if (plc.carChecked[r]) {
+                val bx = margin + r * pitch + pitch - 8 * u
+                val c = Offset(if (flip) size.width - bx else bx, g.trainY - 2 * u)
+                drawCircle(Color.White, 7 * u, c)
+                drawCircle(Locked, 6 * u, c)
+                drawPath(Path().apply {
+                    moveTo(c.x - 3 * u, c.y); lineTo(c.x - 0.5f * u, c.y + 2.5f * u); lineTo(c.x + 3.5f * u, c.y - 2.5f * u)
+                }, Color.White, style = Stroke(1.6f * u, cap = StrokeCap.Round))
+            }
+            if (st == null) {
                 drawText(tm, "NO TRAIN IN STATION", Offset(margin, g.cy - 7 * u),
                     TextStyle(color = Color(0xFF8B949C), fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp))
             }

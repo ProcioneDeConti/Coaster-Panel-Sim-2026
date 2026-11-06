@@ -105,6 +105,8 @@ fun HmiTerminal(vm: SimViewModel, modifier: Modifier = Modifier) {
             BezelHeader(Modifier.weight(1f))
             Spacer(Modifier.width(8.dp))
             LayoutChip(vm)
+            Spacer(Modifier.width(6.dp))
+            AboutChip(vm)
         }
         // Night: the bezel sits in the dark but the backlit screen stays bright and spills a soft glow onto it.
         Box(Modifier.weight(1f).fillMaxWidth().drawBehind { if (Night.on) screenGlow() }) {

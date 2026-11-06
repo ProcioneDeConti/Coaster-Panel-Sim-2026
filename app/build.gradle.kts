@@ -16,14 +16,16 @@ android {
     namespace = "com.abemu.coaster"
     // Station auto-spiel text (spiels/spiels.txt) ships as an asset; its recordings live in src/main/assets/spiels.
     sourceSets["main"].assets.srcDir("../spiels")
+    // LICENSE and NOTICE ship in the APK (assets/legal) for the About screen's license viewer.
+    sourceSets["main"].assets.srcDir(layout.buildDirectory.dir("generated/legal-assets"))
     compileSdk = 36
 
     defaultConfig {
         applicationId = "com.abemu.coaster"
         minSdk = 26
         targetSdk = 36
-        versionCode = 2
-        versionName = "1.1"
+        versionCode = 3
+        versionName = "1.2"
     }
     signingConfigs {
         if (releaseKeys != null) create("release") {
@@ -78,3 +80,10 @@ dependencies {
     implementation("androidx.profileinstaller:profileinstaller:1.4.1")
     testImplementation("junit:junit:4.13.2")
 }
+
+/** Copies the project's LICENSE and NOTICE into the generated assets folder (assets/legal). */
+val copyLegalAssets by tasks.registering(Copy::class) {
+    from(rootProject.file("LICENSE"), rootProject.file("NOTICE"))
+    into(layout.buildDirectory.dir("generated/legal-assets/legal"))
+}
+tasks.named("preBuild") { dependsOn(copyLegalAssets) }

@@ -78,6 +78,7 @@ class MainActivity : ComponentActivity() {
                 RideHaptics(vm)
                 RadioPlayer(vm)
                 ScaledToDesign {
+                androidx.compose.foundation.layout.Box(Modifier.fillMaxSize()) {
                 Row(Modifier.fillMaxSize().background(Color(0xFF111316))) {
                     val divider = @androidx.compose.runtime.Composable {
                         androidx.compose.foundation.layout.Spacer(Modifier.width(2.dp).fillMaxHeight().background(Color.Black))
@@ -101,6 +102,8 @@ class MainActivity : ComponentActivity() {
                             OperatorConsole(vm, Modifier.weight(0.4f).fillMaxHeight())
                         }
                     }
+                }
+                if (vm.showAbout) com.abemu.coaster.ui.AboutScreen(vm)
                 }
                 }
             }

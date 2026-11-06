@@ -46,6 +46,8 @@ enum class ScreenLayout(val label: String) {
 
 class SimViewModel : ViewModel() {
     var layout by mutableStateOf(ScreenLayout.HMI_CONSOLE)
+    /** About / legal notices screen open (GPL v3 Appropriate Legal Notices). */
+    var showAbout by mutableStateOf(false)
     /** Serves the live map to browsers on other devices. */
     val mapServer = com.abemu.coaster.web.MapServer()
     var webMapOn by mutableStateOf(false); private set

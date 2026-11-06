@@ -62,7 +62,7 @@ Android 8.0+, built for large landscape tablets (designed on a Galaxy Tab S9 Ult
   restraints, track clear sounder and fault horn.
 - **Radio chatter** from the supervisor, maintenance and other areas, with recorded voices. Some calls need an
   answer on the push-to-talk.
-- **Station music, station PA spiels**, haptics, and a **night mode** with track lighting and train headlights.
+- **Station music, station PA spiels**, haptics, and a **night mode** with track lighting.
 - **Guest queue** with a posted wait time. Guests balk at long waits and walk off the line when the ride is down.
 - **Desk mode**: a virtual crew runs the ride by itself and maintenance fixes its faults, so the tablet can sit on
   a desk cycling trains.
@@ -95,8 +95,8 @@ Or open **F6 INSTRUCTOR** and switch on **Desk display** to watch the virtual cr
 | Maintenance | 2580 |
 | Instructor | 1234 |
 
-> **Upgrading from a build before v1.1?** v1.1 is signed with a new release key. Uninstall the old build first,
-> since Android won't update an app signed with a different key.
+> **Upgrading from an earlier build?** Releases are signed with a release key, unlike builds made from source in
+> debug or `fast` mode. Uninstall the old build first, since Android won't update an app signed with a different key.
 
 ---
 
@@ -137,6 +137,12 @@ work must also be released under the GPL v3 with its source code available. Unde
 attribution:
 
 > Based on Coaster Panel Sim 2026 by ProcioneDeConti — https://github.com/ProcioneDeConti/Coaster-Panel-Sim-2026
+
+The app shows this attribution and the license notices on its **ⓘ ABOUT** screen, which also lets you read the
+full GPL v3 text and the NOTICE file offline. Modified versions must keep that attribution on their own legal
+notices screen.
+
+![About screen with copyright, attribution, license and third-party notices](docs/screenshots/about.png)
 
 ---
 

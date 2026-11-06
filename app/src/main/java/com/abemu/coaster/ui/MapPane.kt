@@ -49,6 +49,8 @@ fun MapPane(vm: SimViewModel, modifier: Modifier = Modifier) {
             Text("LIVE MAP", color = Color(0xFFD5DAE0), fontSize = 13.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.weight(1f))
             LayoutChip(vm)
+            androidx.compose.foundation.layout.Spacer(Modifier.width(6.dp))
+            AboutChip(vm)
         }
         Row(
             Modifier.fillMaxWidth().background(Hmi.Header).padding(horizontal = 8.dp, vertical = 5.dp),
