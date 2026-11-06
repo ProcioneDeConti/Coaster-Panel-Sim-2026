@@ -127,6 +127,19 @@ Design notes and architecture: [DESIGN.md](DESIGN.md). Tools for regenerating th
 
 ---
 
+## License
+
+Copyright © 2026 ProcioneDeConti. Licensed under the **[GNU General Public License v3.0](LICENSE)** or later.
+
+You're free to use, study, modify and share this project. If you distribute it or anything built from it, that
+work must also be released under the GPL v3 with its source code available. Under the
+[additional terms in NOTICE](NOTICE) (GPL v3 section 7(b)), every copy or modified version must keep this
+attribution:
+
+> Based on Coaster Panel Sim 2026 by ProcioneDeConti — https://github.com/ProcioneDeConti/Coaster-Panel-Sim-2026
+
+---
+
 ## Credits and disclaimer
 
 - Track layouts and scenery: map data © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors,

@@ -1,0 +1,34 @@
+Coaster Panel Sim 2026
+Copyright (C) 2026 ProcioneDeConti
+https://github.com/ProcioneDeConti/Coaster-Panel-Sim-2026
+
+This program is free software: you can redistribute it and/or modify it under the terms of the GNU General
+Public License as published by the Free Software Foundation, either version 3 of the License, or (at your
+option) any later version.
+
+This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the
+implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+more details.
+
+You should have received a copy of the GNU General Public License along with this program (see the LICENSE
+file). If not, see <https://www.gnu.org/licenses/>.
+
+
+ADDITIONAL TERMS (GNU GPL version 3, section 7(b))
+
+Any copy or modified version of this program, in whole or in part, must preserve the following author
+attribution, both in its source code and in the Appropriate Legal Notices displayed by works containing it:
+
+    Based on Coaster Panel Sim 2026 by ProcioneDeConti
+    https://github.com/ProcioneDeConti/Coaster-Panel-Sim-2026
+
+This NOTICE file must be kept with the source code of any copy or modified version.
+
+
+THIRD-PARTY MATERIAL (not covered by the license above)
+
+- Track layouts and plan-view scenery are derived from OpenStreetMap data, (C) OpenStreetMap contributors,
+  available under the Open Database License (ODbL): https://www.openstreetmap.org/copyright
+- Ride and park names, and any logos, belong to their respective owners. Their use here does not imply
+  affiliation or endorsement, and this license grants no rights to them.
+- Third-party libraries (AndroidX, Jetpack Compose, the Gradle wrapper) are used under their own licenses.
