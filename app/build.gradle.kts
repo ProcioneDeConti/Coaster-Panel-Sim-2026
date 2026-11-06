@@ -1,4 +1,10 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import java.util.Properties
+
+// Release signing key, from keystore.properties in the project root (not committed). Without it, release builds
+// are left unsigned.
+val releaseKeys = rootProject.file("keystore.properties").takeIf { it.exists() }
+    ?.let { f -> Properties().apply { f.inputStream().use { load(it) } } }
 
 plugins {
     id("com.android.application")
@@ -16,11 +22,20 @@ android {
         applicationId = "com.abemu.coaster"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "1.1"
+    }
+    signingConfigs {
+        if (releaseKeys != null) create("release") {
+            storeFile = file(releaseKeys.getProperty("storeFile"))
+            storePassword = releaseKeys.getProperty("storePassword")
+            keyAlias = releaseKeys.getProperty("keyAlias")
+            keyPassword = releaseKeys.getProperty("keyPassword")
+        }
     }
     buildTypes {
         release {
+            if (releaseKeys != null) signingConfig = signingConfigs.getByName("release")
             // R8: shrink, optimize and obfuscate; drop unused resources.
             isMinifyEnabled = true
             isShrinkResources = true
